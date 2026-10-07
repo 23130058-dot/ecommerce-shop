@@ -8,10 +8,10 @@ import productRf from '../assets/lensrent/product-rf.png'
 import productVraptor from '../assets/lensrent/product-vraptor.png'
 
 export const categories = [
-  { name: 'Máy ảnh', count: '500+ sản phẩm', keyword: 'camera', icon: categoryCameraIcon },
-  { name: 'Ống kính', count: '1,200+ sản phẩm', keyword: 'lens', icon: categoryLensIcon },
-  { name: 'Phụ kiện', count: '800+ sản phẩm', keyword: 'accessory', icon: categoryAccessoriesIcon },
-  { name: 'Thiết bị Studio', count: '350+ sản phẩm', keyword: 'drone', icon: categoryStudioIcon },
+  { name: 'Máy ảnh', count: '500+ sản phẩm', keyword: 'camera', slug: 'may-anh', icon: categoryCameraIcon },
+  { name: 'Ống kính', count: '1,200+ sản phẩm', keyword: 'lens', slug: 'ong-kinh', icon: categoryLensIcon },
+  { name: 'Phụ kiện', count: '800+ sản phẩm', keyword: 'accessory', slug: 'phu-kien', icon: categoryAccessoriesIcon },
+  { name: 'Thiết bị Studio', count: '350+ sản phẩm', keyword: 'drone', slug: 'studio', icon: categoryStudioIcon },
 ]
 
 export const products = [

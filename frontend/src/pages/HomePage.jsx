@@ -27,17 +27,12 @@ export default function HomePage() {
 
   const scrollToProducts = () => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })
 
-  const chooseCategory = (keyword) => {
-    setSearchValue(keyword)
-    scrollToProducts()
-  }
-
   return (
     <div id="top" className="min-h-screen bg-white font-sans text-[#111827]">
       <Header searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
       <main>
         <Hero searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
-        <CategoriesSection onChooseCategory={chooseCategory} />
+        <CategoriesSection />
         <FeaturedProducts
           products={visibleProducts}
           activeFilter={activeFilter}

@@ -36,7 +36,7 @@ export default function FeaturedProducts({ products: visibleProducts, activeFilt
         )}
 
         <div className="mt-8 flex justify-center">
-          <a className="rounded-lg border border-gray-200 bg-white px-6 py-3 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-[#ff5500] hover:text-[#ff5500]" href="#categories">
+          <a className="rounded-lg border border-gray-200 bg-white px-6 py-3 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-[#ff5500] hover:text-[#ff5500]" href="/categories">
             Khám phá kho thiết bị
           </a>
         </div>

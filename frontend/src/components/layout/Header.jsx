@@ -18,7 +18,7 @@ export default function Header({ searchValue, onSearchChange, onSearch }) {
           </a>
           <nav className="hidden items-center gap-6 text-xs font-medium text-gray-600 xl:flex" aria-label="Điều hướng chính">
             <a className="transition hover:text-[#ff5500]" href="#top">Trang chủ</a>
-            <a className="transition hover:text-[#ff5500]" href="#categories">Danh mục</a>
+            <a className="transition hover:text-[#ff5500]" href="/categories">Danh mục</a>
             <a className="transition hover:text-[#ff5500]" href="#products">So sánh</a>
             <a className="transition hover:text-[#ff5500]" href="#products">Wishlist</a>
           </nav>
