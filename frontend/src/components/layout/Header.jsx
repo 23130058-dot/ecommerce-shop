@@ -52,7 +52,7 @@ export default function Header({ searchValue, onSearchChange, onSearch }) {
             <img src={cartIcon} alt="" />
             <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-[#ff5500] text-[9px] font-bold leading-none text-white">1</span>
           </a>
-          <a className="flex items-center gap-1.5" href="#profile" aria-label="Tài khoản của tôi">
+          <a className="flex items-center gap-1.5" href="/login" aria-label="Đăng nhập">
             <img className="size-7 rounded-full object-cover" src={avatar} alt="Ảnh đại diện tài khoản" />
             <img src={chevronDownIcon} alt="" />
           </a>
@@ -61,3 +61,4 @@ export default function Header({ searchValue, onSearchChange, onSearch }) {
     </header>
   )
 }
+
