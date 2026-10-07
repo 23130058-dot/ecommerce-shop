@@ -29,3 +29,13 @@ button,
 input {
   font: inherit;
 }
+.register-promo-grid {
+  background-color: #151618;
+  background-image:
+    linear-gradient(112deg, rgba(255, 85, 0, 0.26) 0%, rgba(255, 85, 0, 0.08) 32%, transparent 59%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, #2a1c18 0%, #191a1c 55%, #111315 100%);
+  background-size: auto, 54px 54px, 54px 54px, auto;
+  background-position: center;
+}
