@@ -234,13 +234,9 @@ export default function LoginPage() {
 
               <p className="mt-6 text-center text-xs text-gray-500">
                 Chưa có tài khoản?{' '}
-                <button
-                  className="font-semibold text-[#ff5500] hover:text-orange-700"
-                  onClick={(event) => showUnavailableNotice(event, 'Chức năng đăng ký sẽ được bổ sung sau.')}
-                  type="button"
-                >
+                <a className="font-semibold text-[#ff5500] hover:text-orange-700" href="/register">
                   Đăng ký ngay
-                </button>
+                </a>
               </p>
             </div>
 
@@ -254,5 +250,6 @@ export default function LoginPage() {
     </div>
   )
 }
+
 
 
