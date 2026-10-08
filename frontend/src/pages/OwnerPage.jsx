@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 
+import OwnerLayout from '../components/layout/OwnerLayout'
+
 import OwnerDashboard from '../components/owner/OwnerDashboard'
 import ScheduleOverview from '../components/owner/ScheduleOverview'
 import ScheduleSettings from '../components/owner/ScheduleSettings'
@@ -22,6 +24,7 @@ import ReviewTenant from '../components/owner/ReviewTenant'
 function OwnerPage() {
     return (
         <Routes>
+                <Route element={<OwnerLayout />}>
             <Route path="/" element={<OwnerDashboard />} />
 
             <Route path="/schedule" element={<ScheduleOverview />} />
@@ -44,6 +47,7 @@ function OwnerPage() {
             <Route path="/transactions" element={<TransactionHistory />} />
 
             <Route path="/review-tenant" element={<ReviewTenant />} />
+                </Route>
         </Routes>
     )
 }
