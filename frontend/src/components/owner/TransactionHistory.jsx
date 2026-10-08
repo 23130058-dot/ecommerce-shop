@@ -16,20 +16,13 @@ export default function TransactionHistory() {
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <h1 className="text-[23px] font-bold text-gray-800">
-                            Lịch sử giao dịch & Rút tiền
+                            Lịch sử giao dịch
                         </h1>
 
                         <p className="mt-1 text-sm text-gray-400">
-                            Theo dõi chi tiết dòng tiền nhận từ đơn thuê và các lệnh rút tiền.
+                            Theo dõi chi tiết dòng tiền nhận từ đơn thuê.
                         </p>
                     </div>
-
-                    <button
-                        onClick={() => setShowWithdraw(true)}
-                        className="rounded-lg bg-[#F45116] px-5 py-3 text-xs font-bold text-white"
-                    >
-                        Rút Tiền Về Ngân Hàng
-                    </button>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">

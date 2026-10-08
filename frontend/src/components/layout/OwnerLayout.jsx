@@ -6,22 +6,28 @@ import OwnerSidebar from '../owner/OwnerSidebar.jsx'
 export default function OwnerLayout() {
     return (
         <div className="min-h-screen bg-[#F7F8FA]">
-            {/* Header chung */}
-            <Header />
 
-            {/* Khu vực Owner */}
+            {/* Header 68px */}
+            <div className="h-[68px]">
+                <Header />
+            </div>
+
+            {/* Owner content */}
             <div className="flex min-h-[calc(100vh-68px)]">
-                {/* Sidebar Owner */}
+
+                {/* Sidebar 190px */}
                 <OwnerSidebar />
 
-                {/* Nội dung từng trang */}
+                {/* Main */}
                 <main className="min-w-0 flex-1">
                     <Outlet />
                 </main>
+
             </div>
 
-            {/* Footer chung */}
+            {/* Footer giữ nguyên */}
             <Footer />
+
         </div>
     )
 }
