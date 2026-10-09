@@ -1,16 +1,28 @@
+import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom'
+import CategoryPage from './pages/CategoryPage.jsx'
 import HomePage from './pages/HomePage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import OwnerPage from './pages/OwnerPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
-import CategoryPage from './pages/CategoryPage.jsx'
+
+function CategoryRoute() {
+  const { categorySlug } = useParams()
+  return <CategoryPage categorySlug={categorySlug} />
+}
 
 function App() {
-  const currentPath = window.location.pathname.replace(/\/+$/, '')
-  if (currentPath === '/login') return <LoginPage />
-  if (currentPath === '/register') return <RegisterPage />
-  const categoryMatch = currentPath.match(/^\/categories(?:\/([^/]+))?$/)
-  if (categoryMatch) return <CategoryPage categorySlug={categoryMatch[1] || 'all'} />
-  return <HomePage />
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
+        <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
+        <Route path="/owner/*" element={<OwnerPage />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 export default App
-
