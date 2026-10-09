@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { registerUser, saveAuth } from '../services/authApi.js'
 import Footer from '../components/layout/Footer.jsx'
 
 function EyeIcon({ visible }) {
@@ -48,22 +50,36 @@ function Field({ label, children, className = '', htmlFor }) {
 }
 
 export default function RegisterPage() {
+  const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState(null)
 
   const passwordStrength = password
     ? [password.length >= 8, /[A-Z]/.test(password), /[0-9]/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length
     : 2
 
-  const handleSubmit = (event) => {
+const handleSubmit = async (event) => {
     event.preventDefault()
-    setNotice('Giao diện đăng ký đã sẵn sàng. Hiện chưa kết nối với backend.')
+    setNotice(null)
+    const formData = new FormData(event.currentTarget)
+    try {
+      const auth = await registerUser({
+        fullName: formData.get('fullName'),
+        phone: formData.get('phone'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+      })
+      saveAuth(auth)
+      navigate('/')
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    }
   }
 
   const showProviderNotice = (provider) => {
-    setNotice('Đăng ký bằng ' + provider + ' sẽ được cấu hình sau.')
+    setNotice({ type: 'error', message: 'Đăng ký bằng ' + provider + ' chưa được hỗ trợ.' })
   }
 
   return (
@@ -116,7 +132,7 @@ export default function RegisterPage() {
               <header>
                 <h2 className="text-[24px] font-bold leading-8">Tạo tài khoản</h2>
                 <p className="mt-1 max-w-[620px] text-xs leading-[18px] text-gray-500">
-                  Đăng ký bằng email hoặc số điện thoại. Bạn có thể xác minh định danh sau, trước lần thuê đầu tiên.
+                  Tạo tài khoản bằng email và mật khẩu. Bạn có thể bổ sung thông tin xác minh sau.
                 </p>
               </header>
 
@@ -196,7 +212,7 @@ export default function RegisterPage() {
                     ))}
                   </span>
                   <span className="mt-2 block text-[10px] leading-4 text-gray-400">
-                    Tối thiểu 8 ký tự, có chữ hoa và số.
+                    Tối thiểu 8 ký tự. Nên dùng thêm chữ hoa và số để tăng độ an toàn.
                   </span>
                 </Field>
 
@@ -217,7 +233,7 @@ export default function RegisterPage() {
                 <button className="mt-5 flex h-11 w-full items-center justify-center rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" type="submit">
                   Tạo tài khoản
                 </button>
-                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-gray-500">{notice}</p>}
+                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-red-600">{notice.message}</p>}
               </form>
 
               <div className="relative mt-6 flex h-6 items-center justify-center">

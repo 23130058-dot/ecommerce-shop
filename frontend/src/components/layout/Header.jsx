@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { clearAuth, getStoredAuth } from '../../services/authApi.js'
 
 import avatar from '../../assets/lensrent/avatar.png'
 import brandMark from '../../assets/lensrent/brand-mark.svg'
@@ -21,11 +22,36 @@ export default function Header({
   onSearch = () => {},
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [auth, setAuth] = useState(() => getStoredAuth())
   const accountMenuRef = useRef(null)
   const avatarButtonRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
 
+  useEffect(() => {
+    const syncAuth = () => setAuth(getStoredAuth())
+    window.addEventListener('lensrent-auth-changed', syncAuth)
+    window.addEventListener('storage', syncAuth)
+    return () => {
+      window.removeEventListener('lensrent-auth-changed', syncAuth)
+      window.removeEventListener('storage', syncAuth)
+    }
+  }, [])
+  useEffect(() => {
+    if (!auth?.expiresAt) return undefined
+    const delay = auth.expiresAt - Date.now()
+    if (delay <= 0) {
+      clearAuth()
+      setAuth(null)
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearAuth()
+      setAuth(null)
+    }, delay)
+    return () => window.clearTimeout(timeoutId)
+  }, [auth?.expiresAt])
   useEffect(() => {
     if (!accountMenuOpen) return undefined
 
@@ -54,6 +80,8 @@ export default function Header({
   }, [location.pathname])
 
   const handleLogout = () => {
+    clearAuth()
+    setAuth(null)
     setAccountMenuOpen(false)
     navigate('/login')
   }
@@ -97,15 +125,18 @@ export default function Header({
         </form>
 
         <div className="order-2 flex shrink-0 items-center justify-end gap-4 xl:order-3 xl:gap-5">
-          <Link className="relative inline-flex" to="/#products" aria-label="Danh sách yêu thích, 4 sản phẩm">
-            <img className="size-5" src={wishlistIcon} alt="" />
-            <span className="absolute -right-2 -top-2 flex size-[15px] items-center justify-center rounded-full bg-[#ff5500] text-[8px] font-bold leading-none text-white">4</span>
-          </Link>
-          <Link className="relative inline-flex" to="/#products" aria-label="Giỏ hàng, 1 sản phẩm">
-            <img className="size-5" src={cartIcon} alt="" />
-            <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-[#ff5500] text-[9px] font-bold leading-none text-white">1</span>
-          </Link>
+          {auth && (
+            <>
+              <Link className="inline-flex" to="/#products" aria-label="Danh sách yêu thích">
+                <img className="size-5" src={wishlistIcon} alt="" />
+              </Link>
+              <Link className="inline-flex" to="/#products" aria-label="Giỏ hàng">
+                <img className="size-5" src={cartIcon} alt="" />
+              </Link>
+            </>
+          )}
 
+          {auth ? (
           <div className="relative" ref={accountMenuRef}>
             <button
               ref={avatarButtonRef}
@@ -127,8 +158,8 @@ export default function Header({
                 role="menu"
               >
                 <div className="border-b border-gray-100 px-4 pb-3 pt-2">
-                  <p className="text-sm font-semibold text-gray-900">Tài khoản LensRent</p>
-                  <p className="mt-0.5 text-xs text-gray-500">Chọn khu vực bạn muốn sử dụng</p>
+                  <p className="text-sm font-semibold text-gray-900">{auth?.user?.fullName || 'Tài khoản LensRent'}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{auth?.user?.email || 'Chưa đăng nhập'}</p>
                 </div>
 
                 <div className="py-1">
@@ -169,6 +200,12 @@ export default function Header({
               </div>
             )}
           </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link className="rounded-full px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100" to="/login">Đăng nhập</Link>
+              <Link className="rounded-full bg-[#ff5500] px-3 py-2 text-xs font-semibold text-white transition hover:bg-orange-600" to="/register">Đăng ký</Link>
+            </div>
+          )}
         </div>
       </div>
     </header>

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { loginUser, saveAuth } from '../services/authApi.js'
 import cameraBackground from '../assets/lensrent/hero-background.png'
 import Footer from '../components/layout/Footer.jsx'
 
@@ -52,18 +54,30 @@ function Benefit({ title, children }) {
 }
 
 export default function LoginPage() {
-  const [method, setMethod] = useState('email')
+  const navigate = useNavigate()
+  const method = 'email'
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState(null)
 
-  const showUnavailableNotice = (event, message) => {
+const showUnavailableNotice = (event, message) => {
     event.preventDefault()
-    setNotice(message)
+    setNotice({ type: 'error', message })
   }
 
-  const handleSubmit = (event) => {
+const handleSubmit = async (event) => {
     event.preventDefault()
-    setNotice('Giao diện đã sẵn sàng. Chức năng xác thực sẽ được kết nối với backend sau.')
+    setNotice(null)
+    const formData = new FormData(event.currentTarget)
+    try {
+      const auth = await loginUser({
+        email: formData.get('email'),
+        password: formData.get('password'),
+      })
+      saveAuth(auth, formData.get('remember') === 'on')
+      navigate('/')
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    }
   }
 
   const emailTabClass = method === 'email'
@@ -128,7 +142,6 @@ export default function LoginPage() {
                 <button
                   aria-selected={method === 'email'}
                   className={emailTabClass}
-                  onClick={() => setMethod('email')}
                   role="tab"
                   type="button"
                 >
@@ -138,7 +151,8 @@ export default function LoginPage() {
                 <button
                   aria-selected={method === 'phone'}
                   className={phoneTabClass}
-                  onClick={() => setMethod('phone')}
+                  disabled
+                  title="Đăng nhập bằng số điện thoại sẽ được bổ sung sau."
                   role="tab"
                   type="button"
                 >
@@ -197,7 +211,7 @@ export default function LoginPage() {
                 </div>
 
                 <label className="mt-4 flex cursor-pointer items-center gap-2 text-[11px] leading-4 text-gray-500">
-                  <input className="size-[13px] accent-blue-600" type="checkbox" />
+                  <input className="size-[13px] accent-blue-600" name="remember" type="checkbox" />
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
 
@@ -205,7 +219,7 @@ export default function LoginPage() {
                   Đăng nhập
                   <span aria-hidden="true" className="text-base leading-none">→</span>
                 </button>
-                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-gray-500">{notice}</p>}
+                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-red-600">{notice.message}</p>}
               </form>
 
               <div className="relative mt-6 flex h-6 items-center justify-center">
