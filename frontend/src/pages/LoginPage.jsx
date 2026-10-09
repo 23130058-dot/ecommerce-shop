@@ -78,9 +78,9 @@ export default function LoginPage() {
       <main className="flex min-h-[calc(100svh-270px)] items-center justify-center bg-[#f8fafc] px-6 py-8 max-lg:min-h-0">
         <section
           aria-label="Đăng nhập LensRent"
-          className="grid w-full max-w-[1280px] overflow-hidden rounded-[14px] bg-white shadow-[0_1px_3px_rgba(15,23,42,0.12)] lg:min-h-[800px] lg:grid-cols-[41.67%_58.33%]"
+          className="grid w-full max-w-[1860px] overflow-hidden rounded-[14px] bg-white shadow-[0_1px_3px_rgba(15,23,42,0.12)] lg:min-h-[800px] lg:grid-cols-2"
         >
-          <aside className="relative flex min-h-[440px] flex-col bg-black p-10 text-white lg:min-h-[800px]">
+          <aside className="relative flex min-h-[470px] flex-col overflow-hidden bg-black p-8 text-white sm:p-10 lg:min-h-[800px] lg:p-12">
             <img className="absolute inset-0 size-full object-cover opacity-40" src={cameraBackground} alt="" />
             <div className="relative flex flex-1 flex-col">
               <div className="inline-flex w-fit rounded bg-[#ff5500] px-2 py-0.5 text-[10px] font-bold uppercase leading-[15px] tracking-[0.5px]">
@@ -109,22 +109,22 @@ export default function LoginPage() {
             </div>
           </aside>
 
-          <section className="flex min-h-[690px] flex-col px-7 pb-8 pt-10 sm:px-12 lg:min-h-[800px] lg:px-12 lg:pt-12">
+          <section className="flex min-h-[800px] flex-col px-7 pb-8 pt-10 sm:px-10 lg:px-16 lg:pt-12">
             <div className="flex h-6 shrink-0 justify-end">
               <a className="text-xs text-gray-500 transition hover:text-[#ff5500]" href="/">
                 ‹ Quay lại trang chủ
               </a>
             </div>
 
-            <div className="mx-auto mt-6 w-full max-w-[448px]">
+            <div className="mx-auto mt-6 w-full max-w-[780px]">
               <div>
-                <h2 className="text-xl font-bold leading-8">Đăng nhập</h2>
-                <p className="mt-1 text-xs leading-4 text-gray-500">
+                <h2 className="text-[24px] font-bold leading-8">Đăng nhập</h2>
+                <p className="mt-1 text-xs leading-[18px] text-gray-500">
                   Chào mừng bạn trở lại với LensRent Việt Nam.
                 </p>
               </div>
 
-              <div className="mt-6 grid h-[35px] grid-cols-2 border-b border-gray-200" role="tablist" aria-label="Phương thức đăng nhập">
+              <div className="mt-7 grid h-[35px] grid-cols-2 border-b border-gray-200" role="tablist" aria-label="Phương thức đăng nhập">
                 <button
                   aria-selected={method === 'email'}
                   className={emailTabClass}
@@ -150,12 +150,12 @@ export default function LoginPage() {
               <form className="mt-6" onSubmit={handleSubmit}>
                 <div className="space-y-4">
                   <label className="block">
-                    <span className="mb-1 block text-[10px] font-bold uppercase leading-[15px] text-gray-700">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">
                       {method === 'email' ? 'Địa chỉ Email' : 'Số điện thoại'}
                     </span>
                     <input
                       autoComplete={method === 'email' ? 'email' : 'tel'}
-                      className="h-[34px] w-full rounded-[7px] border border-gray-200 bg-gray-50 px-3 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#ff5500] focus:ring-2 focus:ring-orange-100"
+                      className="h-11 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#ff5500] focus:ring-2 focus:ring-orange-100"
                       name={method === 'email' ? 'email' : 'phone'}
                       placeholder={method === 'email' ? 'vidu@email.com' : '+84 9xx xxx xxx'}
                       required
@@ -164,10 +164,10 @@ export default function LoginPage() {
                   </label>
 
                   <div>
-                    <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase leading-[15px] text-gray-700">
+                    <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">
                       <label htmlFor="login-password">Mật khẩu</label>
                       <button
-                        className="text-[10px] font-semibold normal-case text-[#ff5500] hover:text-orange-700"
+                        className="text-[11px] font-semibold normal-case text-[#ff5500] hover:text-orange-700"
                         onClick={(event) => showUnavailableNotice(event, 'Chức năng lấy lại mật khẩu sẽ được bổ sung sau.')}
                         type="button"
                       >
@@ -178,7 +178,7 @@ export default function LoginPage() {
                       <input
                         id="login-password"
                         autoComplete="current-password"
-                        className="h-[34px] w-full rounded-[7px] border border-gray-200 bg-gray-50 px-3 pr-10 text-xs text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#ff5500] focus:ring-2 focus:ring-orange-100"
+                        className="h-11 w-full rounded-lg border border-gray-200 bg-white px-4 pr-12 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#ff5500] focus:ring-2 focus:ring-orange-100"
                         name="password"
                         placeholder="••••••••"
                         required
@@ -201,7 +201,7 @@ export default function LoginPage() {
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
 
-                <button className="mt-4 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" type="submit">
+                <button className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" type="submit">
                   Đăng nhập
                   <span aria-hidden="true" className="text-base leading-none">→</span>
                 </button>

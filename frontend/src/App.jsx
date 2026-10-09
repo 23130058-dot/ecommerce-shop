@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import OwnerPage from './pages/OwnerPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
+import RenterPage from './pages/RenterPage.jsx'
 
 function CategoryRoute() {
   const { categorySlug } = useParams()
@@ -20,6 +21,7 @@ function App() {
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />
+        <Route path="/renter/*" element={<RenterPage />} />
       </Routes>
     </BrowserRouter>
   )
