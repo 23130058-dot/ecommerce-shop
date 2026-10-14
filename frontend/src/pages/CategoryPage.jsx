@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react'
-import { categories, products, sortOptions } from '../data/homeData.js'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { categories, sortOptions } from '../data/homeData.js'
+import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
+import { getCatalogProducts } from '../services/productApi.js'
 
 const pageContent = {
   'may-anh': {
@@ -28,12 +31,14 @@ const pageContent = {
 
 const brands = ['Sony', 'Canon', 'RED', 'DJI']
 
-function getBrand(productName) {
+function getBrand(product) {
+  if (product.brand) return product.brand
+  const productName = product.name || ''
   return brands.find((brand) => productName.toLocaleLowerCase('vi').startsWith(brand.toLocaleLowerCase('vi'))) || 'Khác'
 }
 
 function matchesCategory(product, slug) {
-  const category = product.category.toLocaleLowerCase('vi')
+  const category = (product.category || '').toLocaleLowerCase('vi')
   if (slug === 'may-anh') return category.includes('camera')
   if (slug === 'ong-kinh') return category.includes('lens')
   if (slug === 'phu-kien') return category.includes('accessory')
@@ -60,11 +65,12 @@ function CheckRow({ label, checked, onChange }) {
 }
 
 function CatalogProductCard({ product }) {
+  const detailPath = '/products/' + product.id
   return (
     <article className="group overflow-hidden rounded-lg border border-gray-200 bg-white transition hover:border-gray-300 hover:shadow-md">
-      <a className="block" href="/login" aria-label={'Xem chi tiết ' + product.name}>
+      <Link className="block" to={detailPath} aria-label={'Xem chi tiết ' + product.name}>
         <div className="relative flex aspect-[1.08/1] items-center justify-center overflow-hidden bg-[#f0f3f7] p-6">
-          <img className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.04]" src={product.image} alt={product.name} />
+          <img className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.04]" src={resolveProductImage(product.imageKey)} alt={product.name} />
           {product.status === 'Đã thuê' && (
             <span className="absolute left-3 top-3 rounded bg-[#fff0eb] px-2 py-1 text-[9px] font-semibold text-[#e4501a]">ĐANG ĐƯỢC THUÊ</span>
           )}
@@ -73,14 +79,14 @@ function CatalogProductCard({ product }) {
         <div className="min-h-[87px] px-3.5 py-3">
           <p className="text-[9px] font-medium uppercase tracking-wide text-gray-400">{product.type}</p>
           <h3 className="mt-1.5 line-clamp-2 min-h-8 text-[11px] font-bold leading-4 text-gray-800">{product.name}</h3>
-          <p className="mt-1 text-[9px] text-gray-400">{product.tags.slice(0, 2).join(' · ')}</p>
+          <p className="mt-1 text-[9px] text-gray-400">{(product.tags || []).slice(0, 2).join(' · ')}</p>
         </div>
-      </a>
+      </Link>
       <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3.5 py-2.5">
         <p className="text-[10px] font-bold text-[#f04b0b]">
-          {product.price.toLocaleString('vi-VN')}đ <span className="font-normal text-gray-400">/ ngày</span>
+          {Number(product.price || 0).toLocaleString('vi-VN')}đ <span className="font-normal text-gray-400">/ ngày</span>
         </p>
-        <a className="rounded bg-[#ff5500] px-3 py-2 text-[9px] font-bold text-white transition hover:bg-orange-600" href="/login">Thuê ngay</a>
+        <Link className="rounded bg-[#ff5500] px-3 py-2 text-[9px] font-bold text-white transition hover:bg-orange-600" to={detailPath}>Xem chi tiết</Link>
       </div>
     </article>
   )
@@ -99,22 +105,47 @@ export default function CategoryPage({ categorySlug }) {
   const [selectedCategories, setSelectedCategories] = useState(slug === 'all' ? [] : [slug])
   const [selectedBrands, setSelectedBrands] = useState([])
   const [maxPrice, setMaxPrice] = useState(8500000)
+  const [products, setProducts] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [retryToken, setRetryToken] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setIsLoading(true)
+      setLoadError('')
+      try {
+        const result = await getCatalogProducts({
+          search: searchValue.trim(),
+          sort: activeSort,
+          limit: 100,
+          signal: controller.signal,
+        })
+        setProducts(result)
+      } catch (error) {
+        if (error.name !== 'AbortError') setLoadError(error.message)
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [activeSort, retryToken, searchValue])
 
   const visibleProducts = useMemo(() => {
-    const search = searchValue.trim().toLocaleLowerCase('vi')
     const result = products.filter((product) => {
-      const matchesSearch = `${product.name} ${product.type} ${product.category} ${product.tags.join(' ')}`
-        .toLocaleLowerCase('vi')
-        .includes(search)
       const matchesCategories = selectedCategories.length === 0 || selectedCategories.some((item) => matchesCategory(product, item))
-      const matchesBrands = selectedBrands.length === 0 || selectedBrands.includes(getBrand(product.name))
-      return matchesSearch && matchesCategories && matchesBrands && product.price <= maxPrice
+      const matchesBrands = selectedBrands.length === 0 || selectedBrands.includes(getBrand(product))
+      return matchesCategories && matchesBrands && Number(product.price || 0) <= maxPrice
     })
 
-    if (activeSort === 'price') return result.sort((first, second) => first.price - second.price)
-    if (activeSort === 'newest') return result.reverse()
+    if (activeSort === 'price') return result.sort((first, second) => Number(first.price || 0) - Number(second.price || 0))
     return result
-  }, [activeSort, maxPrice, searchValue, selectedBrands, selectedCategories])
+  }, [activeSort, maxPrice, products, selectedBrands, selectedCategories])
 
   const toggleCategory = (selectedSlug) => {
     setSelectedCategories((previous) => previous.includes(selectedSlug)
@@ -135,9 +166,9 @@ export default function CategoryPage({ categorySlug }) {
       <Header searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
       <main id="categories" className="mx-auto max-w-[1600px] px-4 pb-16 pt-5 sm:px-6 lg:px-10">
         <nav aria-label="Đường dẫn" className="mb-6 flex items-center gap-2 text-[10px] text-gray-400">
-          <a className="hover:text-[#ff5500]" href="/">Trang chủ</a>
+          <Link className="hover:text-[#ff5500]" to="/">Trang chủ</Link>
           <span aria-hidden="true">/</span>
-          <a className="hover:text-[#ff5500]" href="/categories">Danh mục</a>
+          <Link className="hover:text-[#ff5500]" to="/categories">Danh mục</Link>
           <span aria-hidden="true">/</span>
           <span className="font-medium text-gray-600">{currentCategory?.name || 'Tất cả thiết bị'}</span>
         </nav>
@@ -149,7 +180,7 @@ export default function CategoryPage({ categorySlug }) {
               <h1 className="text-2xl font-extrabold leading-8 text-gray-900 sm:text-[30px]">{content.title}</h1>
               <p className="mt-1.5 max-w-2xl text-xs leading-5 text-gray-500">{content.intro}</p>
             </div>
-            <p className="shrink-0 text-[11px] text-gray-400"><span className="font-semibold text-gray-700">{visibleProducts.length}</span> thiết bị mẫu</p>
+            <p className="shrink-0 text-[11px] text-gray-400"><span className="font-semibold text-gray-700">{visibleProducts.length}</span> thiết bị</p>
           </div>
         </div>
 
@@ -223,9 +254,16 @@ export default function CategoryPage({ categorySlug }) {
               </div>
             </div>
 
-            {visibleProducts.length > 0 ? (
+            {loadError ? (
+              <div className="rounded-lg border border-red-200 bg-white px-6 py-12 text-center" role="alert">
+                <p className="text-sm font-semibold text-red-700">{loadError}</p>
+                <button className="mt-4 rounded bg-[#ff5500] px-4 py-2 text-xs font-semibold text-white" onClick={() => setRetryToken((value) => value + 1)} type="button">Thử tải lại</button>
+              </div>
+            ) : isLoading && products.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500" role="status">Đang tải thiết bị...</div>
+            ) : visibleProducts.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleProducts.map((product) => <CatalogProductCard key={product.name} product={product} />)}
+                {visibleProducts.map((product) => <CatalogProductCard key={product.id} product={product} />)}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center">

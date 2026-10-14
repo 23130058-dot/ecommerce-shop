@@ -12,10 +12,31 @@ public final class CatalogDtos {
             String name,
             String type,
             String category,
+            String brand,
             BigDecimal rating,
             List<String> tags,
             BigDecimal price,
             String imageKey,
+            String status
+    ) {
+    }
+
+    public record ProductDetailResponse(
+            Long id,
+            String name,
+            String type,
+            String category,
+            String categoryName,
+            String brand,
+            String description,
+            BigDecimal rating,
+            List<String> tags,
+            BigDecimal price,
+            BigDecimal depositAmount,
+            String imageKey,
+            List<String> images,
+            String ownerName,
+            int availableQuantity,
             String status
     ) {
     }

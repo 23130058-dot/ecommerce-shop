@@ -9,6 +9,7 @@ import AccountSettingsPage from './pages/AccountSettingsPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import AdminDevicesPage from './pages/AdminDevicesPage.jsx'
+import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
 
 function AdminOnly({ children }) {
@@ -29,6 +30,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/products/:productId" element={<ProductDetailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />

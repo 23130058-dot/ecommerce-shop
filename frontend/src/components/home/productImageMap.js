@@ -12,5 +12,6 @@ const productImages = {
 
 export function resolveProductImage(imageKey) {
   const fileName = imageKey?.split('/').pop()
-  return productImages[fileName] || productA7
+  return productImages[fileName]
+    || (imageKey?.startsWith('https://') || imageKey?.startsWith('http://') || imageKey?.startsWith('/') ? imageKey : productA7)
 }
