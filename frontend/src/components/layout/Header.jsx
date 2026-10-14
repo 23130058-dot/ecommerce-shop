@@ -177,6 +177,16 @@ export default function Header({
                 </div>
 
                 <div className="border-t border-gray-100 py-1">
+                  {auth?.user?.role?.toUpperCase() === 'ADMIN' && (
+                    <Link
+                      className="block px-4 py-2.5 text-sm font-semibold text-[#e94b0a] transition hover:bg-orange-50"
+                      onClick={() => setAccountMenuOpen(false)}
+                      role="menuitem"
+                      to="/admin"
+                    >
+                      Trang quản trị Admin
+                    </Link>
+                  )}
                   <Link
                     className="block px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-orange-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}
