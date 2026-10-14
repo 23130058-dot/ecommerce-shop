@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { loginUser, saveAuth } from '../services/authApi.js'
 import cameraBackground from '../assets/lensrent/hero-background.png'
 import Footer from '../components/layout/Footer.jsx'
@@ -55,6 +55,7 @@ function Benefit({ title, children }) {
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const method = 'email'
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -74,7 +75,8 @@ const handleSubmit = async (event) => {
         password: formData.get('password'),
       })
       saveAuth(auth, formData.get('remember') === 'on')
-      navigate('/')
+      const requestedPath = location.state?.from?.pathname
+      navigate(auth.user?.role?.toUpperCase() === 'ADMIN' ? '/admin' : requestedPath || '/', { replace: true })
     } catch (error) {
       setNotice({ type: 'error', message: error.message })
     }
@@ -264,6 +266,5 @@ const handleSubmit = async (event) => {
     </div>
   )
 }
-
 
 

@@ -108,6 +108,26 @@ macOS/Linux/Git Bash:
 ./mvnw test
 ~~~
 
+## Tạo tài khoản quản trị viên ADMIN đầu tiên
+
+Đăng ký một tài khoản bình thường trên trang web trước. Sau khi PostgreSQL và backend đã chạy, mở terminal tại thư mục gốc project và nâng vai trò cho đúng email vừa đăng ký:
+
+~~~bash
+docker compose exec db psql -U ecommerce -d ecommerce -c "UPDATE users SET role = 'ADMIN' WHERE LOWER(email) = LOWER('email-cua-ban@example.com');"
+~~~
+
+Thay `email-cua-ban@example.com` bằng email tài khoản của bạn. Nếu lệnh báo `UPDATE 1`, tài khoản đã được cấp quyền ADMIN; nếu báo `UPDATE 0`, email chưa tồn tại trong database. Đăng xuất khỏi website rồi đăng nhập lại để nhận JWT mới có role ADMIN. Sau đó website tự chuyển đến `/admin`.
+
+Không cho phép đăng ký công khai tự chọn role ADMIN. Backend chỉ cho JWT có role ADMIN truy cập `/api/admin/**`; nếu tài khoản thường nhập thẳng URL trang admin thì frontend sẽ đưa về trang chủ và API trả về 403.
+
+## API quản trị
+
+- `GET /api/admin/dashboard`: tổng hợp doanh thu, đơn thuê hoàn tất, người dùng mới, thiết bị chờ duyệt, tranh chấp, biểu đồ theo tháng/danh mục và hoạt động gần đây.
+- `GET /api/admin/users`: tìm kiếm/lọc/phân trang người dùng bằng `search`, `role`, `status`, `page`, `size`.
+- `PATCH /api/admin/users/{id}/status`: khóa hoặc mở khóa tài khoản bằng JSON `{"status":"LOCKED"}` hoặc `{"status":"ACTIVE"}`.
+
+Flyway áp dụng migration `V2__admin_defaults_and_indexes.sql` khi backend khởi động để gán role/trạng thái mặc định cho dữ liệu cũ và tạo index phục vụ các truy vấn admin.
+
 ## Chạy frontend
 
 Mở một cửa sổ terminal riêng. Từ thư mục gốc project, chạy:

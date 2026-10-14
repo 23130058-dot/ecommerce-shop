@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import CategoriesSection from '../components/home/CategoriesSection.jsx'
 import FeaturedProducts from '../components/home/FeaturedProducts.jsx'
 import Hero from '../components/home/Hero.jsx'
@@ -7,23 +7,40 @@ import Partners from '../components/home/Partners.jsx'
 import WhyChooseUs from '../components/home/WhyChooseUs.jsx'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
-import { products } from '../data/homeData.js'
+import { getCatalogProducts } from '../services/productApi.js'
 
 export default function HomePage() {
   const [searchValue, setSearchValue] = useState('')
   const [activeFilter, setActiveFilter] = useState('popular')
-  const visibleProducts = useMemo(() => {
-    const search = searchValue.trim().toLocaleLowerCase('vi')
-    const filtered = products.filter((product) =>
-      `${product.name} ${product.type} ${product.category} ${product.tags.join(' ')}`
-        .toLocaleLowerCase('vi')
-        .includes(search),
-    )
+  const [products, setProducts] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [retryToken, setRetryToken] = useState(0)
 
-    if (activeFilter === 'price') return [...filtered].sort((first, second) => first.price - second.price)
-    if (activeFilter === 'newest') return [...filtered].reverse()
-    return filtered
-  }, [activeFilter, searchValue])
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setIsLoading(true)
+      setLoadError('')
+      try {
+        const result = await getCatalogProducts({
+          search: searchValue.trim(),
+          sort: activeFilter,
+          signal: controller.signal,
+        })
+        setProducts(result)
+      } catch (error) {
+        if (error.name !== 'AbortError') setLoadError(error.message)
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [activeFilter, retryToken, searchValue])
 
   const scrollToProducts = () => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })
 
@@ -34,10 +51,13 @@ export default function HomePage() {
         <Hero searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
         <CategoriesSection />
         <FeaturedProducts
-          products={visibleProducts}
+          products={products}
           activeFilter={activeFilter}
           onSelectFilter={setActiveFilter}
           searchValue={searchValue}
+          isLoading={isLoading}
+          loadError={loadError}
+          onRetry={() => setRetryToken((value) => value + 1)}
         />
         <WhyChooseUs />
         <OwnerCallToAction />
