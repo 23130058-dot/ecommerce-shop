@@ -7,6 +7,7 @@ public interface CatalogProductProjection {
     String getName();
     String getType();
     String getCategory();
+    String getBrand();
     BigDecimal getRating();
     String getTags();
     BigDecimal getPrice();

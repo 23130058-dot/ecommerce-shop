@@ -1,8 +1,11 @@
 package com.example.ecommerceshop.catalog;
 
 import com.example.ecommerceshop.catalog.CatalogDtos.ProductResponse;
+import com.example.ecommerceshop.catalog.CatalogDtos.ProductDetailResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.List;
@@ -34,6 +37,7 @@ public class CatalogService {
                         product.getName(),
                         product.getType(),
                         product.getCategory(),
+                        product.getBrand(),
                         product.getRating(),
                         parseTags(product.getTags()),
                         product.getPrice(),
@@ -41,6 +45,38 @@ public class CatalogService {
                         product.getStock() != null && product.getStock() > 0 ? "Sẵn sàng" : "Đã thuê"
                 ))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductDetailResponse getProduct(long id) {
+        CatalogProductDetailProjection product = productRepository.findActiveProductDetail(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị này."));
+        int availableQuantity = product.getStock() == null ? 0 : Math.max(product.getStock(), 0);
+        List<String> images = productRepository.findProductImages(id).stream()
+                .filter(image -> image != null && !image.isBlank())
+                .toList();
+        if (images.isEmpty() && product.getImageKey() != null && !product.getImageKey().isBlank()) {
+            images = List.of(product.getImageKey());
+        }
+
+        return new ProductDetailResponse(
+                product.getId(),
+                product.getName(),
+                product.getType(),
+                product.getCategory(),
+                product.getCategoryName(),
+                product.getBrand(),
+                product.getDescription(),
+                product.getRating(),
+                parseTags(product.getTags()),
+                product.getPrice(),
+                product.getDepositAmount(),
+                product.getImageKey(),
+                images,
+                product.getOwnerName(),
+                availableQuantity,
+                availableQuantity > 0 ? "Sẵn sàng" : "Đã thuê"
+        );
     }
 
     private List<String> parseTags(String tags) {
