@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import avatar from '../assets/lensrent/avatar.png'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
+import { changeAccountPassword, getAccountProfile, updateAccountProfile, uploadAccountAvatar } from '../services/accountApi.js'
+import { API_BASE_URL, getStoredAuth, updateStoredUser } from '../services/authApi.js'
 
 const settingsTabs = [
   { key: 'profile', path: '/renter/profile', label: 'Hồ sơ cá nhân', icon: 'user' },
@@ -51,7 +53,7 @@ function Icon({ name, size = 18, className = '' }) {
   )
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text', required = false, helper, endAdornment }) {
+function Field({ label, value, onChange, placeholder, type = 'text', required = false, helper, endAdornment, minLength, maxLength }) {
   return (
     <label className="block min-w-0">
       <span className="mb-2 flex items-center gap-1 text-sm font-medium text-slate-700">
@@ -63,6 +65,8 @@ function Field({ label, value, onChange, placeholder, type = 'text', required = 
           onChange={onChange}
           placeholder={placeholder}
           required={required}
+          minLength={minLength}
+          maxLength={maxLength}
           type={type}
           value={value}
         />
@@ -111,26 +115,69 @@ function SectionCard({ title, description, children, className = '' }) {
   )
 }
 
-function ProfileTab({ notify }) {
-  const [name, setName] = useState('Hoàng Nam')
-  const [birthday, setBirthday] = useState('1998-08-15')
-  const [email, setEmail] = useState('hoangnam@gmail.com')
-  const [phone, setPhone] = useState('090 123 4567')
-  const [occupation, setOccupation] = useState('Nhiếp ảnh gia')
-  const [bio, setBio] = useState('Yêu thích nhiếp ảnh và khám phá những thiết bị mới.')
-  const [address, setAddress] = useState('125 Nguyễn Huệ')
-  const [district, setDistrict] = useState('Quận 1')
-  const [city, setCity] = useState('TP. Hồ Chí Minh')
-  const [photo, setPhoto] = useState(avatar)
+function profileFormValues(profile) {
+  return {
+    fullName: profile.fullName || '',
+    email: profile.email || '',
+    phone: profile.phone || '',
+    birthday: profile.birthday || '',
+    occupation: profile.occupation || '',
+    bio: profile.bio || '',
+    address: profile.address || '',
+    district: profile.district || '',
+    city: profile.city || '',
+  }
+}
 
-  const save = (event) => {
-    event.preventDefault()
-    notify('Đã lưu thông tin hồ sơ')
+function avatarSource(avatarUrl) {
+  if (!avatarUrl) return avatar
+  return avatarUrl.startsWith('http') ? avatarUrl : `${API_BASE_URL}${avatarUrl}`
+}
+
+function ProfileTab({ notify, profile, onProfileUpdated }) {
+  const [values, setValues] = useState(() => profileFormValues(profile))
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+  const [photo, setPhoto] = useState(avatarSource(profile.avatarUrl))
+
+  const change = (field) => (event) => setValues((current) => ({ ...current, [field]: event.target.value }))
+
+  const save = async (event) => {
+    event?.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const updated = await updateAccountProfile({ ...values, birthday: values.birthday || null })
+      onProfileUpdated(updated)
+      notify('Đã lưu thông tin hồ sơ')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const pickPhoto = (event) => {
+  const pickPhoto = async (event) => {
     const file = event.target.files?.[0]
-    if (file) setPhoto(URL.createObjectURL(file))
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setError('Vui lòng chọn ảnh JPG hoặc PNG có dung lượng tối đa 5 MB.')
+      return
+    }
+    setUploading(true)
+    setError('')
+    try {
+      const updated = await uploadAccountAvatar(file)
+      onProfileUpdated(updated)
+      setPhoto(avatarSource(updated.avatarUrl))
+      notify('Đã cập nhật ảnh đại diện')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -144,57 +191,44 @@ function ProfileTab({ notify }) {
               <p className="mt-1 text-xs leading-5 text-slate-500">Ảnh JPG hoặc PNG, dung lượng tối đa 5MB.</p>
             </div>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
-              <Icon name="upload" size={16} /> Tải ảnh lên
+              <Icon name="upload" size={16} /> {uploading ? 'Đang tải...' : 'Tải ảnh lên'}
               <input accept="image/png,image/jpeg" className="sr-only" onChange={pickPhoto} type="file" />
             </label>
           </div>
           <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
-            <Field label="Họ và tên" onChange={(event) => setName(event.target.value)} required value={name} />
-            <Field label="Ngày sinh" onChange={(event) => setBirthday(event.target.value)} type="date" value={birthday} />
-            <Field label="Địa chỉ Email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} endAdornment={<span className="absolute right-3 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600"><Icon name="check" size={14} /> Đã xác minh</span>} />
-            <Field label="Số điện thoại" onChange={(event) => setPhone(event.target.value)} value={phone} endAdornment={<span className="absolute right-3 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600"><Icon name="check" size={14} /> Đã xác minh</span>} />
-            <Field label="Nghề nghiệp / Vai trò" onChange={(event) => setOccupation(event.target.value)} value={occupation} />
+            <Field label="Họ và tên" onChange={change('fullName')} required value={values.fullName} />
+            <Field label="Ngày sinh" onChange={change('birthday')} type="date" value={values.birthday} />
+            <Field label="Địa chỉ Email" onChange={change('email')} required type="email" value={values.email} />
+            <Field label="Số điện thoại" onChange={change('phone')} value={values.phone} />
+            <Field label="Nghề nghiệp / Vai trò" onChange={change('occupation')} value={values.occupation} />
             <label className="block min-w-0 sm:col-span-2">
               <span className="mb-2 block text-sm font-medium text-slate-700">Giới thiệu ngắn</span>
-              <textarea className="min-h-[90px] w-full resize-y rounded-lg border border-slate-200 px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10" maxLength={240} onChange={(event) => setBio(event.target.value)} value={bio} />
-              <span className="mt-1 block text-right text-xs text-slate-400">{bio.length}/240 ký tự</span>
+              <textarea className="min-h-[90px] w-full resize-y rounded-lg border border-slate-200 px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10" maxLength={240} onChange={change('bio')} value={values.bio} />
+              <span className="mt-1 block text-right text-xs text-slate-400">{values.bio.length}/240 ký tự</span>
             </label>
           </div>
         </SectionCard>
 
         <SectionCard title="Địa chỉ nhận thiết bị" description="Địa chỉ này được dùng làm địa chỉ nhận thiết bị mặc định khi đặt thuê.">
           <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
-            <Field label="Địa chỉ" onChange={(event) => setAddress(event.target.value)} required value={address} />
-            <Field label="Quận / Huyện" onChange={(event) => setDistrict(event.target.value)} required value={district} />
-            <Field label="Tỉnh / Thành phố" onChange={(event) => setCity(event.target.value)} required value={city} />
+            <Field label="Địa chỉ" onChange={change('address')} value={values.address} />
+            <Field label="Quận / Huyện" onChange={change('district')} value={values.district} />
+            <Field label="Tỉnh / Thành phố" onChange={change('city')} value={values.city} />
           </div>
         </SectionCard>
-        <SaveActions onCancel={() => notify('Đã hủy các thay đổi')} onSave={save} />
+        {error && <p aria-live="polite" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-5">
+          <button className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50" onClick={() => { setValues(profileFormValues(profile)); setError('') }} type="button">Hủy</button>
+          <button className="rounded-lg bg-[#ff5500] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || uploading} type="submit">{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
+        </div>
       </div>
 
       <aside className="space-y-5">
-        <SectionCard className="overflow-hidden !p-0">
-          <div className="bg-gradient-to-br from-[#f95318] to-[#ff7c37] px-5 py-5 text-white">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/80">LensRent Score</p>
-              <Icon name="sparkles" size={20} />
-            </div>
-            <p className="mt-3 text-4xl font-extrabold tracking-tight">985<span className="ml-1 text-sm font-medium text-white/80">/ 1000</span></p>
-            <p className="mt-2 text-xs text-white/85">Điểm uy tín rất tốt</p>
-          </div>
-          <div className="space-y-3 p-5">
-            <div className="flex items-center justify-between text-sm"><span className="text-slate-500">Hồ sơ hoàn thiện</span><span className="font-semibold text-slate-800">85%</span></div>
-            <div className="h-2 overflow-hidden rounded-full bg-orange-100"><div className="h-full w-[85%] rounded-full bg-[#ff6a2a]" /></div>
-            <p className="text-xs leading-5 text-slate-500">Bổ sung ảnh giấy tờ để tăng độ tin cậy khi thuê thiết bị.</p>
-            <Link className="inline-flex items-center gap-2 pt-1 text-sm font-semibold text-orange-600 hover:text-orange-700" to="/renter/profile/security">Hoàn thiện xác minh <Icon name="arrow" size={15} /></Link>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Trạng thái xác minh">
+        <SectionCard title="Thông tin liên hệ" description="Thông tin bạn đã lưu trong hồ sơ.">
           <div className="space-y-4">
-            <VerificationRow label="Email" detail="hoangnam@gmail.com" />
-            <VerificationRow label="Số điện thoại" detail="090 ••• ••67" />
-            <VerificationRow label="Danh tính" detail="Chưa xác minh" pending />
+            <div><p className="text-xs text-slate-500">Email</p><p className="mt-1 break-all text-sm font-semibold text-slate-800">{values.email || 'Chưa cập nhật'}</p></div>
+            <div><p className="text-xs text-slate-500">Điện thoại</p><p className="mt-1 text-sm font-semibold text-slate-800">{values.phone || 'Chưa cập nhật'}</p></div>
+            <div><p className="text-xs text-slate-500">Địa chỉ nhận thiết bị</p><p className="mt-1 text-sm font-semibold text-slate-800">{[values.address, values.district, values.city].filter(Boolean).join(', ') || 'Chưa cập nhật'}</p></div>
           </div>
         </SectionCard>
 
@@ -209,54 +243,54 @@ function ProfileTab({ notify }) {
   )
 }
 
-function VerificationRow({ label, detail, pending = false }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className={`flex size-8 shrink-0 items-center justify-center rounded-full ${pending ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}><Icon name={pending ? 'lock' : 'check'} size={15} /></span>
-      <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{label}</p><p className="truncate text-xs text-slate-500">{detail}</p></div>
-      <span className={`text-[10px] font-bold uppercase tracking-wide ${pending ? 'text-amber-600' : 'text-emerald-600'}`}>{pending ? 'Chưa có' : 'Đã xác minh'}</span>
-    </div>
-  )
-}
-
 function SecurityTab({ notify }) {
-  const [twoFactor, setTwoFactor] = useState(true)
-  const [smsAlerts, setSmsAlerts] = useState(true)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [password, setPassword] = useState('Lensrent@2026')
-  const [recoveryEnabled, setRecoveryEnabled] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const savePassword = async (event) => {
+    event.preventDefault()
+    setError('')
+    if (newPassword !== confirmPassword) {
+      setError('Mật khẩu xác nhận không khớp.')
+      return
+    }
+    setSaving(true)
+    try {
+      await changeAccountPassword({ currentPassword, newPassword })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      notify('Đã cập nhật mật khẩu')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
-      <SectionCard title="Mật khẩu" description="Cập nhật mật khẩu định kỳ để bảo vệ tài khoản của bạn.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Mật khẩu hiện tại" onChange={() => {}} type="password" value="••••••••••••" />
-          <Field label="Mật khẩu mới" onChange={(event) => setPassword(event.target.value)} type={passwordVisible ? 'text' : 'password'} value={password} endAdornment={<button aria-label={passwordVisible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} className="absolute right-3 text-xs font-semibold text-slate-500 hover:text-slate-800" onClick={() => setPasswordVisible(!passwordVisible)} type="button">{passwordVisible ? 'Ẩn' : 'Hiện'}</button>} />
-        </div>
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <p className="text-xs text-slate-500">Mật khẩu nên có ít nhất 8 ký tự, gồm chữ và số.</p>
-          <button className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600" onClick={() => notify('Đã cập nhật mật khẩu')} type="button">Cập nhật mật khẩu</button>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Xác thực hai lớp" description="Thêm một lớp bảo vệ khi đăng nhập trên thiết bị mới.">
-        <div className="divide-y divide-slate-100">
-          <SettingRow icon="shield" title="Xác thực hai lớp" description="Yêu cầu mã xác nhận khi đăng nhập trên trình duyệt mới." trailing={<Toggle checked={twoFactor} label="Bật xác thực hai lớp" onChange={setTwoFactor} />} />
-          <SettingRow icon="bell" title="Mã xác nhận qua SMS" description="Gửi mã đến số điện thoại 090 ••• ••67." trailing={<Toggle checked={smsAlerts} label="Nhận mã xác nhận qua SMS" onChange={setSmsAlerts} />} />
-          <SettingRow icon="lock" title="Mã dự phòng" description={recoveryEnabled ? 'Mã dự phòng đã được tạo cho tài khoản.' : 'Tạo mã dùng một lần khi bạn không thể nhận SMS.'} trailing={<button className="rounded-lg border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => { setRecoveryEnabled(true); notify('Đã tạo mã dự phòng') }} type="button">{recoveryEnabled ? 'Xem mã' : 'Tạo mã'}</button>} />
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Thiết bị đang đăng nhập" description="Kiểm tra các thiết bị đã sử dụng tài khoản LensRent.">
-        <div className="divide-y divide-slate-100">
-          <DeviceRow title="Windows · Chrome" detail="TP. Hồ Chí Minh · Đang sử dụng" current notify={notify} />
-          <DeviceRow title="iPhone 15 · Safari" detail="TP. Hồ Chí Minh · 2 ngày trước" notify={notify} />
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Vô hiệu hóa tài khoản" description="Tạm ngừng tài khoản và đăng xuất khỏi mọi thiết bị.">
-        <button className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50" onClick={() => notify('Tính năng vô hiệu hóa sẽ cần xác nhận qua email')} type="button">Vô hiệu hóa tài khoản</button>
-      </SectionCard>
+      <form onSubmit={savePassword}>
+        <SectionCard title="Mật khẩu" description="Nhập mật khẩu hiện tại rồi chọn mật khẩu mới cho tài khoản.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Mật khẩu hiện tại" onChange={(event) => setCurrentPassword(event.target.value)} required type={passwordVisible ? 'text' : 'password'} value={currentPassword} />
+            <Field label="Mật khẩu mới" onChange={(event) => setNewPassword(event.target.value)} required minLength={8} maxLength={72} type={passwordVisible ? 'text' : 'password'} value={newPassword} />
+            <Field label="Xác nhận mật khẩu mới" onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} maxLength={72} type={passwordVisible ? 'text' : 'password'} value={confirmPassword} />
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <div>
+              <p className="text-xs text-slate-500">Mật khẩu mới cần có từ 8 đến 72 ký tự.</p>
+              <button className="mt-2 text-xs font-semibold text-slate-500 hover:text-slate-800" onClick={() => setPasswordVisible((visible) => !visible)} type="button">{passwordVisible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}</button>
+            </div>
+            <button className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving} type="submit">{saving ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
+          </div>
+          {error && <p aria-live="polite" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+        </SectionCard>
+      </form>
     </div>
   )
 }
@@ -267,16 +301,6 @@ function SettingRow({ icon, title, description, trailing }) {
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600"><Icon name={icon} size={18} /></span>
       <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{description}</p></div>
       {trailing}
-    </div>
-  )
-}
-
-function DeviceRow({ title, detail, current = false, notify }) {
-  return (
-    <div className="flex items-center gap-3 py-4 first:pt-0 last:pb-0">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600"><Icon name="camera" size={19} /></span>
-      <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-800">{title}{current && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Thiết bị này</span>}</p><p className="mt-1 text-xs text-slate-500">{detail}</p></div>
-      {!current && <button className="text-xs font-semibold text-red-600 hover:underline" onClick={() => notify('Đã đăng xuất thiết bị này')} type="button">Đăng xuất</button>}
     </div>
   )
 }
@@ -409,8 +433,47 @@ export default function AccountSettingsPage() {
   const location = useLocation()
   const [toast, setToast] = useState('')
   const [toastTimer, setToastTimer] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState('')
   const tabKey = location.pathname.split('/')[3] || 'profile'
   const activeTab = settingsTabs.find((tab) => tab.key === tabKey) || settingsTabs[0]
+
+  useEffect(() => {
+    let mounted = true
+    getAccountProfile()
+      .then((loaded) => {
+        if (!mounted) return
+        setProfile(loaded)
+        updateStoredUser({ fullName: loaded.fullName, email: loaded.email, phone: loaded.phone, avatarUrl: loaded.avatarUrl })
+      })
+      .catch((requestError) => {
+        if (mounted) setProfileError(requestError.message)
+      })
+      .finally(() => {
+        if (mounted) setProfileLoading(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const loadProfile = async () => {
+    setProfileLoading(true)
+    setProfileError('')
+    try {
+      const loaded = await getAccountProfile()
+      setProfile(loaded)
+      updateStoredUser({ fullName: loaded.fullName, email: loaded.email, phone: loaded.phone, avatarUrl: loaded.avatarUrl })
+    } catch (requestError) {
+      setProfileError(requestError.message)
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
+  const handleProfileUpdated = (updated) => {
+    setProfile(updated)
+    updateStoredUser({ fullName: updated.fullName, email: updated.email, phone: updated.phone, avatarUrl: updated.avatarUrl })
+  }
 
   const notify = (message) => {
     setToast(message)
@@ -435,8 +498,8 @@ export default function AccountSettingsPage() {
           <aside className="space-y-4 lg:sticky lg:top-5">
             <section className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                <img alt="" className="size-12 rounded-full object-cover" src={avatar} />
-                <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">Hoàng Nam</p><p className="mt-0.5 truncate text-xs text-slate-500">Người thuê hạng Pro</p></div>
+                <img alt="" className="size-12 rounded-full object-cover" src={avatarSource(profile?.avatarUrl)} />
+                <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{profile?.fullName || getStoredAuth()?.user?.fullName || 'Tài khoản LensRent'}</p><p className="mt-0.5 truncate text-xs text-slate-500">Người thuê LensRent</p></div>
               </div>
               <p className="px-2 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.13em] text-slate-400">Workspace</p>
               <nav aria-label="Điều hướng Workspace" className="space-y-1">
@@ -469,7 +532,7 @@ export default function AccountSettingsPage() {
               <div><h2 className="text-lg font-bold text-slate-900">{activeTab.label}</h2><p className="mt-1 text-sm text-slate-500">{tabKey === 'profile' ? 'Thông tin hiển thị trong tài khoản LensRent của bạn.' : tabKey === 'security' ? 'Kiểm soát quyền truy cập và bảo vệ dữ liệu cá nhân.' : tabKey === 'payments' ? 'Quản lý ví, tiền cọc và tài khoản nhận tiền.' : 'Tùy chỉnh những thông tin LensRent gửi đến bạn.'}</p></div>
             </div>
 
-            {activeTab.key === 'profile' && <ProfileTab notify={notify} />}
+            {activeTab.key === 'profile' && (profileLoading ? <SectionCard title="Đang tải hồ sơ..." /> : profileError ? <SectionCard title="Không tải được hồ sơ"><p className="text-sm text-red-700">{profileError}</p><button className="mt-4 rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-semibold text-white" onClick={loadProfile} type="button">Thử lại</button></SectionCard> : <ProfileTab key={profile.id} notify={notify} profile={profile} onProfileUpdated={handleProfileUpdated} />)}
             {activeTab.key === 'security' && <SecurityTab notify={notify} />}
             {activeTab.key === 'payments' && <PaymentsTab notify={notify} />}
             {activeTab.key === 'notifications' && <NotificationsTab notify={notify} />}

@@ -10,6 +10,11 @@ import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import AdminDevicesPage from './pages/AdminDevicesPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
+import WishlistPage from './pages/WishlistPage.jsx'
+import ComparePage from './pages/ComparePage.jsx'
+import CartPage from './pages/CartPage.jsx'
+import CheckoutPage from './pages/CheckoutPage.jsx'
+import OrderConfirmationPage from './pages/OrderConfirmationPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
 
 function AdminOnly({ children }) {
@@ -31,6 +36,12 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products/:productId" element={<ProductDetailPage />} />
+        <Route path="/wishlist" element={<WishlistPage />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/checkout/payment" element={<CheckoutPage />} />
+        <Route path="/checkout/complete/:rentalId" element={<OrderConfirmationPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />
@@ -41,6 +52,7 @@ function App() {
         <Route path="/owner/*" element={<OwnerPage />} />
         <Route path="/renter/profile" element={<AccountSettingsPage />} />
         <Route path="/renter/profile/*" element={<AccountSettingsPage />} />
+        <Route path="/renter/orders/:rentalId" element={<OrderConfirmationPage />} />
         <Route path="/renter/*" element={<RenterPage />} />
       </Routes>
     </BrowserRouter>

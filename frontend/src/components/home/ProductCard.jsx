@@ -1,8 +1,38 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import ratingStarIcon from '../../assets/lensrent/rating-star.svg'
+import { getStoredAuth } from '../../services/authApi.js'
+import { addToCompare, addToWishlist } from '../../services/shoppingApi.js'
 import { resolveProductImage } from './productImageMap.js'
 
 export default function ProductCard({ product }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [busyAction, setBusyAction] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
+
+  const saveProduct = async (action) => {
+    if (!getStoredAuth()) {
+      navigate('/login', { state: { from: location } })
+      return
+    }
+    setBusyAction(action)
+    setActionMessage('')
+    try {
+      if (action === 'wishlist') {
+        await addToWishlist(product.id)
+        setActionMessage('Đã lưu vào Wishlist.')
+      } else {
+        await addToCompare(product.id)
+        setActionMessage('Đã thêm vào danh sách so sánh.')
+      }
+    } catch (error) {
+      setActionMessage(error.message)
+    } finally {
+      setBusyAction('')
+    }
+  }
+
   return (
     <article className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-orange-200 hover:shadow-md">
       <Link className="block" to={'/products/' + product.id} aria-label={'Xem chi tiết ' + product.name}>
@@ -27,11 +57,18 @@ export default function ProductCard({ product }) {
           </div>
         </div>
       </Link>
-      <div className="flex min-h-[50px] items-center justify-between gap-2 border-t border-gray-100 px-4 py-2">
-        <p className="text-sm font-bold text-[#ff5500]">
-          {Number(product.price).toLocaleString('vi-VN')}đ <span className="font-normal text-gray-400">/ ngày</span>
-        </p>
-        <Link className="shrink-0 text-xs font-bold text-[#ff5500] hover:text-orange-700" to={'/products/' + product.id}>CHI TIẾT</Link>
+      <div className="border-t border-gray-100 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-bold text-[#ff5500]">
+            {Number(product.price).toLocaleString('vi-VN')}đ <span className="font-normal text-gray-400">/ ngày</span>
+          </p>
+          <Link className="shrink-0 text-xs font-bold text-[#ff5500] hover:text-orange-700" to={'/products/' + product.id}>CHI TIẾT</Link>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <button className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(busyAction)} onClick={() => saveProduct('wishlist')} type="button">♡ Lưu</button>
+          <button className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(busyAction)} onClick={() => saveProduct('compare')} type="button">⇄ So sánh</button>
+        </div>
+        {actionMessage && <p aria-live="polite" className="mt-1.5 text-xs leading-4 text-gray-500">{actionMessage}</p>}
       </div>
     </article>
   )

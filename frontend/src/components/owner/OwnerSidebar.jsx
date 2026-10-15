@@ -1,11 +1,12 @@
 import { useLocation, useNavigate } from 'react-router-dom'
+import { getStoredAuth } from '../../services/authApi.js'
 
 function MenuIcon({ type, active = false }) {
     const color = active ? '#F45116' : '#64748B'
 
     const props = {
-        width: 12,
-        height: 12,
+        width: 18,
+        height: 18,
         viewBox: '0 0 24 24',
         fill: 'none',
         stroke: color,
@@ -189,6 +190,8 @@ const menuGroups = [
 export default function OwnerSidebar() {
     const navigate = useNavigate()
     const location = useLocation()
+    const auth = getStoredAuth()
+    const ownerName = auth?.user?.fullName || 'Chủ thiết bị LensRent'
 
     const isActive = (path) => {
         if (path === '/owner') {
@@ -199,91 +202,63 @@ export default function OwnerSidebar() {
     }
 
     return (
-        <aside className="w-[190px] shrink-0 border-r border-gray-200 bg-white">
-            <div className="flex min-h-[calc(100vh-68px)] flex-col">
-
-                {/* MENU */}
-                <div className="flex-1 px-4 py-5">
-
-                    {menuGroups.map((group) => (
-                        <div
-                            key={group.title}
-                            className="mb-6"
-                        >
-                            <h3 className="mb-2 px-2 text-[10px] font-semibold tracking-wide text-gray-400">
-                                {group.title}
-                            </h3>
-
-                            <div className="space-y-0.5">
-                                {group.items.map((item) => {
-                                    const active = isActive(item.path)
-
-                                    return (
-                                        <button
-                                            key={item.path}
-                                            type="button"
-                                            onClick={() => navigate(item.path)}
-                                            className={`
-                                                flex w-full items-center gap-2
-                                                rounded-md
-                                                px-[10px] py-2
-                                                text-left text-[11px]
-                                                leading-[15px]
-                                                transition-colors
-                                                ${
-                                                active
-                                                    ? 'bg-[#FFF3EC] font-medium text-[#F45116]'
-                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-[#F45116]'
-                                            }
-                                            `}
-                                        >
-                                            <span className="flex w-3 shrink-0 items-center justify-center">
-                                                <MenuIcon
-                                                    type={item.icon}
-                                                    active={active}
-                                                />
-                                            </span>
-
-                                            <span className="min-w-0">
-                                                {item.label}
-                                            </span>
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                        </div>
-                    ))}
-
+        <aside className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-[#ed4b0a]">
+                    {ownerName.slice(0, 1).toLocaleUpperCase('vi')}
                 </div>
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-gray-900">{ownerName}</p>
+                    <p className="mt-0.5 text-xs text-gray-400">Chủ thiết bị LensRent</p>
+                </div>
+            </div>
 
-                {/* SETTINGS */}
-                <div className="px-4 pb-5">
+            <nav aria-label="Workspace owner" className="rounded-xl border border-gray-200 bg-white p-2">
+                {menuGroups.map((group) => (
+                    <div key={group.title} className="mb-3 last:mb-0">
+                        <h2 className="px-3 pb-2 pt-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+                            {group.title}
+                        </h2>
+                        <div>
+                            {group.items.map((item) => {
+                                const active = isActive(item.path)
+                                return (
+                                    <button
+                                        key={item.path}
+                                        type="button"
+                                        onClick={() => navigate(item.path)}
+                                        aria-current={active ? 'page' : undefined}
+                                        className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${active ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                                    >
+                                        <span className="flex w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                                            <MenuIcon type={item.icon} active={active} />
+                                        </span>
+                                        <span className="min-w-0">{item.label}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                ))}
+                <div className="mt-3 border-t border-gray-100 pt-3">
                     <button
                         type="button"
-                        onClick={() => navigate('/owner/profile')}
-                        className="
-                            flex w-full items-center gap-2
-                            rounded-md
-                            border border-[#F45116]
-                            px-[10px] py-2
-                            text-[11px]
-                            leading-[15px]
-                            text-[#F45116]
-                            transition-colors
-                            hover:bg-[#FFF3EC]
-                        "
+                        onClick={() => navigate('/renter/profile')}
+                        aria-current={isActive('/renter/profile') ? 'page' : undefined}
+                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${isActive('/renter/profile') ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
                     >
-                        <span className="flex w-3 shrink-0 items-center justify-center">
-                            <MenuIcon
-                                type="settings"
-                                active={true}
-                            />
+                        <span className="flex w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                            <MenuIcon type="settings" active={isActive('/renter/profile')} />
                         </span>
-
                         <span>Cài đặt tài khoản</span>
                     </button>
                 </div>
+            </nav>
 
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Cần hỗ trợ?</p>
+                <p className="mt-2 text-xs leading-5 text-gray-500">Liên hệ đội ngũ LensRent để được trợ giúp về lịch thuê hoặc thiết bị.</p>
+                <a className="mt-3 inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:border-[#ff5500] hover:text-[#ff5500]" href="tel:19006789">Hỗ trợ ngay</a>
             </div>
         </aside>
     )

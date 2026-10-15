@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { categories } from '../../data/products'
+import { createOwnerProduct } from '../../services/ownerApi.js'
+
+function readImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ''))
+        reader.onerror = () => reject(new Error('Không đọc được ảnh đã chọn.'))
+        reader.readAsDataURL(file)
+    })
+}
 
 export default function EquipmentAdd() {
     const navigate = useNavigate()
@@ -8,13 +18,20 @@ export default function EquipmentAdd() {
     const [form, setForm] = useState({
         name: '',
         category: '',
+        type: '',
+        brand: '',
+        tags: '',
         price: '',
         deposit: '',
+        quantity: '1',
         description: '',
-        status: 'Sẵn sàng',
+        status: 'ACTIVE',
     })
 
     const [image, setImage] = useState(null)
+    const [imageData, setImageData] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState('')
 
     const handleChange = (e) => {
         setForm({
@@ -23,25 +40,53 @@ export default function EquipmentAdd() {
         })
     }
 
-    const handleImageChange = (e) => {
+    const handleImageChange = async (e) => {
         const file = e.target.files?.[0]
 
         if (!file) return
-
+        if (file.size > 5 * 1024 * 1024) {
+            setError('Ảnh tối đa 5 MB.')
+            e.target.value = ''
+            return
+        }
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+            setError('Vui lòng chọn ảnh PNG, JPG hoặc WebP.')
+            e.target.value = ''
+            return
+        }
+        setError('')
         setImage(URL.createObjectURL(file))
+        try {
+            setImageData(await readImage(file))
+        } catch (readError) {
+            setError(readError.message)
+        }
     }
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
-
-        console.log({
-            ...form,
-            image,
-        })
-
-        alert('Thêm thiết bị thành công!')
-
-        navigate('/owner/equipment')
+        setError('')
+        setBusy(true)
+        try {
+            await createOwnerProduct({
+                name: form.name.trim(),
+                category: form.category,
+                type: form.type.trim(),
+                brand: form.brand.trim(),
+                tags: form.tags.trim(),
+                dailyPrice: Number(form.price),
+                depositAmount: Number(form.deposit || 0),
+                quantity: Number(form.quantity),
+                description: form.description.trim(),
+                status: form.status,
+                imageUrl: imageData,
+            })
+            navigate('/owner/equipment', { state: { success: 'Đã đăng thiết bị cho thuê.' } })
+        } catch (saveError) {
+            setError(saveError.message)
+        } finally {
+            setBusy(false)
+        }
     }
 
     return (
@@ -109,6 +154,16 @@ export default function EquipmentAdd() {
 
                                 </div>
 
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">Loại thiết bị</label>
+                                    <input name="type" value={form.type} onChange={handleChange} placeholder="VD: MIRRORLESS CAMERA" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]" />
+                                </div>
+
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">Thương hiệu</label>
+                                    <input name="brand" value={form.brand} onChange={handleChange} placeholder="VD: Sony" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]" />
+                                </div>
+
                                 {/* Category */}
                                 <div>
 
@@ -132,7 +187,7 @@ export default function EquipmentAdd() {
 
                                             <option
                                                 key={item.keyword}
-                                                value={item.keyword}
+                                                value={item.keyword === 'drone' ? 'studio' : item.keyword}
                                             >
                                                 {item.name}
                                             </option>
@@ -141,6 +196,11 @@ export default function EquipmentAdd() {
 
                                     </select>
 
+                                </div>
+
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">Số lượng thiết bị</label>
+                                    <input type="number" name="quantity" value={form.quantity} onChange={handleChange} min="1" step="1" required className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]" />
                                 </div>
 
                                 {/* Price */}
@@ -210,16 +270,21 @@ export default function EquipmentAdd() {
                                         className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"
                                     >
 
-                                        <option value="Sẵn sàng">
+                                        <option value="ACTIVE">
                                             Sẵn sàng
                                         </option>
 
-                                        <option value="Đang bảo trì">
-                                            Đang bảo trì
+                                        <option value="INACTIVE">
+                                            Tạm ẩn
                                         </option>
 
                                     </select>
 
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">Thông số / từ khóa</label>
+                                    <input name="tags" value={form.tags} onChange={handleChange} placeholder="Ví dụ: Full-frame, 4K, chống rung" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]" />
                                 </div>
 
                                 {/* Description */}
@@ -277,7 +342,7 @@ export default function EquipmentAdd() {
                                         </p>
 
                                         <p className="mt-1 text-xs text-gray-400">
-                                            PNG, JPG hoặc JPEG
+                                            PNG, JPG hoặc WebP · tối đa 5 MB
                                         </p>
                                     </>
 
@@ -285,7 +350,7 @@ export default function EquipmentAdd() {
 
                                 <input
                                     type="file"
-                                    accept="image/png,image/jpeg"
+                                    accept="image/png,image/jpeg,image/webp"
                                     onChange={handleImageChange}
                                     className="hidden"
                                 />
@@ -310,12 +375,15 @@ export default function EquipmentAdd() {
 
                     <button
                         type="submit"
-                        className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e]"
+                        disabled={busy}
+                        className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e] disabled:cursor-wait disabled:opacity-60"
                     >
-                        Lưu thiết bị
+                        {busy ? 'Đang lưu…' : 'Lưu thiết bị'}
                     </button>
 
                 </div>
+
+                {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
 
             </form>
 
