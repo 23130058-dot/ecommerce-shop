@@ -24,7 +24,12 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   }
   const result = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(result?.detail || result?.message || result?.error || `Yêu cầu thất bại (${response.status}).`)
+    const serverMessage = [result?.detail, result?.message]
+      .find((message) => typeof message === 'string' && message.trim() && message.trim().toLowerCase() !== 'forbidden')
+    if (response.status === 403) {
+      throw new Error(serverMessage || 'Bạn không thể thuê sản phẩm do chính mình đăng.')
+    }
+    throw new Error(serverMessage || result?.error || `Yêu cầu thất bại (${response.status}).`)
   }
   if (method !== 'GET') window.dispatchEvent(new Event('lensrent-shopping-changed'))
   return result
