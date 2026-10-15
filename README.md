@@ -108,17 +108,43 @@ macOS/Linux/Git Bash:
 ./mvnw test
 ~~~
 
-## Tạo tài khoản quản trị viên ADMIN đầu tiên
+## Hướng dẫn sử dụng
 
-Đăng ký một tài khoản bình thường trên trang web trước. Sau khi PostgreSQL và backend đã chạy, mở terminal tại thư mục gốc project và nâng vai trò cho đúng email vừa đăng ký:
+### Khách thuê (RENTER)
 
-~~~bash
-docker compose exec db psql -U ecommerce -d ecommerce -c "UPDATE users SET role = 'ADMIN' WHERE LOWER(email) = LOWER('email-cua-ban@example.com');"
+1. Đăng ký tài khoản hoặc đăng nhập. Tài khoản đăng ký mới mặc định có vai trò RENTER.
+2. Tìm thiết bị ở trang chủ hoặc danh mục; mở thẻ sản phẩm để xem chi tiết, chọn ngày thuê và thêm vào giỏ.
+3. Có thể lưu thiết bị vào Wishlist hoặc thêm vào So sánh. Các mục này được lưu theo tài khoản.
+4. Giỏ hàng giữ số lượng thiết bị trong 10 phút. Nếu chưa hoàn tất thanh toán khi hết thời gian, chỗ giữ được trả lại kho; hãy kiểm tra lại giỏ trước khi thanh toán.
+5. Trong bước xác nhận giỏ, nhập thời gian thuê, cách nhận thiết bị và thông tin liên hệ. Bước thanh toán hiện là mô phỏng: nhấn xác nhận thanh toán sẽ tạo đơn và ghi nhận trạng thái đã thanh toán, chưa kết nối cổng thanh toán thật.
+6. Theo dõi đơn và thiết bị đang thuê trong khu vực Renter. Thông tin cá nhân, ảnh đại diện và mật khẩu có thể quản lý ở phần hồ sơ/cài đặt tài khoản.
+
+Backend từ chối thêm vào giỏ, cập nhật giỏ hoặc thanh toán nếu người đang đăng nhập là chủ sở hữu sản phẩm. Quy tắc này được kiểm tra lại trong backend ở mỗi bước thuê.
+
+### Chủ thiết bị (OWNER)
+
+Tài khoản OWNER có thể đăng thiết bị cho thuê, quản lý sản phẩm của mình, xem yêu cầu thuê và xác nhận hoặc hoàn tất đơn trong khu vực Owner. Đăng ký thông thường không tự cấp vai trò OWNER. Trong môi trường local, sau khi đăng ký tài khoản, có thể cấp vai trò bằng lệnh sau:
+
+~~~powershell
+docker compose exec db psql -U ecommerce -d ecommerce -c "UPDATE users SET role = 'OWNER' WHERE LOWER(email) = LOWER('email-cua-ban@example.com');"
 ~~~
 
-Thay `email-cua-ban@example.com` bằng email tài khoản của bạn. Nếu lệnh báo `UPDATE 1`, tài khoản đã được cấp quyền ADMIN; nếu báo `UPDATE 0`, email chưa tồn tại trong database. Đăng xuất khỏi website rồi đăng nhập lại để nhận JWT mới có role ADMIN. Sau đó website tự chuyển đến `/admin`.
+Thay email mẫu bằng email đã đăng ký. Sau đó đăng xuất và đăng nhập lại để nhận JWT có vai trò mới. Các sản phẩm mẫu được chuyển sang `23130058@st.hcmuaf.edu.vn` bởi migration `V9__assign_demo_products_to_existing_owner.sql`; migration này yêu cầu tài khoản email đó đã có trong database khi V9 chạy.
 
-Không cho phép đăng ký công khai tự chọn role ADMIN. Backend chỉ cho JWT có role ADMIN truy cập `/api/admin/**`; nếu tài khoản thường nhập thẳng URL trang admin thì frontend sẽ đưa về trang chủ và API trả về 403.
+### Quản trị viên (ADMIN)
+
+Migration `V10__bootstrap_admin_account.sql` tạo hoặc cập nhật tài khoản phát triển `123@gmail.com` với mật khẩu `Chidat0805` và vai trò ADMIN. Đây là thông tin đăng nhập dành riêng cho database local dùng trong dự án. Không dùng mật khẩu này trên môi trường thật; đổi mật khẩu trước khi chia sẻ hoặc triển khai ứng dụng. Đăng nhập bằng tài khoản này để mở `/admin`.
+
+Không cho phép đăng ký công khai tự chọn role ADMIN. Backend chỉ cho JWT có role ADMIN truy cập `/api/admin/**`; tài khoản thường không thể mở trang quản trị bằng cách nhập URL trực tiếp.
+
+## Các trang và chức năng hiện có
+
+- Trang chủ, danh mục, tìm kiếm và trang chi tiết sản phẩm lấy dữ liệu thiết bị từ PostgreSQL.
+- Wishlist, So sánh và Giỏ hàng lưu theo người dùng đã đăng nhập.
+- Checkout tạo đơn thuê, ghi nhận thanh toán mô phỏng và hiển thị trang xác nhận đơn.
+- Renter xem hồ sơ, cài đặt tài khoản, lịch sử đơn và thiết bị đang thuê.
+- Owner đăng/quản lý thiết bị, xác nhận yêu cầu thuê và theo dõi đơn của sản phẩm mình sở hữu.
+- Admin xem tổng quan, tìm kiếm/lọc người dùng và khóa hoặc mở khóa tài khoản.
 
 ## API quản trị
 
@@ -126,7 +152,7 @@ Không cho phép đăng ký công khai tự chọn role ADMIN. Backend chỉ cho
 - `GET /api/admin/users`: tìm kiếm/lọc/phân trang người dùng bằng `search`, `role`, `status`, `page`, `size`.
 - `PATCH /api/admin/users/{id}/status`: khóa hoặc mở khóa tài khoản bằng JSON `{"status":"LOCKED"}` hoặc `{"status":"ACTIVE"}`.
 
-Flyway áp dụng migration `V2__admin_defaults_and_indexes.sql` khi backend khởi động để gán role/trạng thái mặc định cho dữ liệu cũ và tạo index phục vụ các truy vấn admin.
+Flyway tự áp dụng các migration khi backend khởi động. Các migration tạo schema, dữ liệu catalog mẫu, giỏ/Wishlist/So sánh, dữ liệu Owner và tài khoản ADMIN phát triển. Với database mới, lưu ý migration V9 yêu cầu tài khoản `23130058@st.hcmuaf.edu.vn` tồn tại trước khi migration chạy. Migration V2 bổ sung giá trị role/trạng thái mặc định và index cho truy vấn quản trị.
 
 ## Chạy frontend
 

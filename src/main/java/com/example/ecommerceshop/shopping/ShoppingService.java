@@ -118,6 +118,7 @@ public class ShoppingService {
     public CartResponse getCart(long userId) {
         long cartId = ensureCart(userId);
         releaseExpiredCartItems(cartId);
+        releaseOwnerCartItems(userId, cartId);
         List<ShoppingItemResponse> items = queryCartItems(cartId);
         return calculateCart(items);
     }
@@ -127,6 +128,7 @@ public class ShoppingService {
         long cartId = ensureCart(userId);
         releaseExpiredCartItems(cartId);
         ProductRow product = lockActiveProductAvailability(request.productId(), cartId);
+        rejectOwnerRenting(userId, product);
         int quantity = request.quantity() == null ? 1 : request.quantity();
         validateQuantity(quantity, product.availableQuantity());
         validateDatePair(request.startDate(), request.endDate());
@@ -158,6 +160,7 @@ public class ShoppingService {
         releaseExpiredCartItems(cartId);
         CartItemRow item = findCartItem(cartId, itemId);
         ProductRow product = lockActiveProductAvailability(item.productId(), cartId);
+        rejectOwnerRenting(userId, product);
         int quantity = request.quantity() == null ? item.quantity() : request.quantity();
         LocalDate startDate = request.startDate() == null ? item.startDate() : request.startDate();
         LocalDate endDate = request.endDate() == null ? item.endDate() : request.endDate();
@@ -189,6 +192,7 @@ public class ShoppingService {
     @Transactional
     public CheckoutResponse checkout(long userId, CheckoutRequest request) {
         long cartId = ensureCart(userId);
+        releaseOwnerCartItems(userId, cartId);
         Integer expiredItems = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM cart_items
                 WHERE cart_id = ? AND reserved_until <= CURRENT_TIMESTAMP
@@ -223,6 +227,7 @@ public class ShoppingService {
         for (ShoppingItemResponse item : items.stream()
                 .sorted(Comparator.comparing(ShoppingItemResponse::productId)).toList()) {
             ProductRow product = lockActiveProductAvailability(item.productId(), cartId);
+            rejectOwnerRenting(userId, product);
             if (item.quantity() > product.availableQuantity()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Số lượng thiết bị còn lại đã thay đổi. Vui lòng cập nhật giỏ hàng.");
@@ -448,17 +453,17 @@ public class ShoppingService {
     }
 
     private ProductRow requireActiveProduct(long productId) {
-        List<ProductRow> products = jdbc.query("SELECT COALESCE(stock, 0) AS available_quantity FROM products WHERE id = ? AND status = 'ACTIVE'",
-                (rs, rowNum) -> new ProductRow(rs.getInt("available_quantity")), productId);
+        List<ProductRow> products = jdbc.query("SELECT owner_id, COALESCE(stock, 0) AS available_quantity FROM products WHERE id = ? AND status = 'ACTIVE'",
+                (rs, rowNum) -> new ProductRow(rs.getInt("available_quantity"), rs.getLong("owner_id")), productId);
         if (products.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị đang hoạt động.");
         return products.get(0);
     }
 
     private ProductRow lockActiveProductAvailability(long productId, long cartId) {
-        List<Integer> lockedProducts = jdbc.query("""
-                SELECT id FROM products WHERE id = ? AND status = 'ACTIVE' FOR UPDATE
-                """, (rs, rowNum) -> rs.getInt(1), productId);
-        if (lockedProducts.isEmpty()) {
+        List<Long> lockedOwners = jdbc.query("""
+                SELECT owner_id FROM products WHERE id = ? AND status = 'ACTIVE' FOR UPDATE
+                """, (rs, rowNum) -> rs.getLong("owner_id"), productId);
+        if (lockedOwners.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị đang hoạt động.");
         }
         Integer available = jdbc.queryForObject("""
@@ -472,11 +477,26 @@ public class ShoppingService {
                 ), 0), 0)::integer
                 FROM products p WHERE p.id = ?
                 """, Integer.class, cartId, productId);
-        return new ProductRow(available == null ? 0 : available);
+        return new ProductRow(available == null ? 0 : available, lockedOwners.get(0));
+    }
+
+    private void rejectOwnerRenting(long userId, ProductRow product) {
+        if (product.ownerId() == userId) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Bạn không thể thuê sản phẩm do chính mình đăng.");
+        }
     }
 
     private void releaseExpiredCartItems(long cartId) {
         jdbc.update("DELETE FROM cart_items WHERE cart_id = ? AND reserved_until <= CURRENT_TIMESTAMP", cartId);
+    }
+
+    private void releaseOwnerCartItems(long userId, long cartId) {
+        jdbc.update("""
+                DELETE FROM cart_items ci
+                USING products p
+                WHERE ci.product_id = p.id AND ci.cart_id = ? AND p.owner_id = ?
+                """, cartId, userId);
     }
 
     private CartItemRow findCartItem(long cartId, long itemId) {
@@ -513,6 +533,6 @@ public class ShoppingService {
 
     private BigDecimal zero(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
 
-    private record ProductRow(int availableQuantity) {}
+    private record ProductRow(int availableQuantity, long ownerId) {}
     private record CartItemRow(long productId, int quantity, LocalDate startDate, LocalDate endDate) {}
 }
