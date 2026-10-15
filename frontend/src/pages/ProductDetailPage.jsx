@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getCatalogProduct, getCatalogProducts } from '../services/productApi.js'
+import { getStoredAuth } from '../services/authApi.js'
+import { addToCart, addToCompare, addToWishlist } from '../services/shoppingApi.js'
 
 const categoryRoutes = {
   camera: 'may-anh',
@@ -88,6 +90,7 @@ function RelatedCard({ product }) {
 export default function ProductDetailPage() {
   const { productId } = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const [product, setProduct] = useState(null)
   const [relatedProducts, setRelatedProducts] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -95,8 +98,17 @@ export default function ProductDetailPage() {
   const [retryToken, setRetryToken] = useState(0)
   const [selectedImage, setSelectedImage] = useState(0)
   const [openPolicies, setOpenPolicies] = useState({})
+  const [shoppingBusy, setShoppingBusy] = useState('')
+  const [shoppingNotice, setShoppingNotice] = useState('')
+  const [isSignedIn, setIsSignedIn] = useState(() => Boolean(getStoredAuth()))
   const [startDate, setStartDate] = useState(() => addDays(localDateString(new Date()), 1))
   const [endDate, setEndDate] = useState(() => addDays(localDateString(new Date()), 3))
+
+  useEffect(() => {
+    const syncAuth = () => setIsSignedIn(Boolean(getStoredAuth()))
+    window.addEventListener('lensrent-auth-changed', syncAuth)
+    return () => window.removeEventListener('lensrent-auth-changed', syncAuth)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -144,6 +156,44 @@ export default function ProductDetailPage() {
 
   const moveGallery = (direction) => {
     setSelectedImage((index) => (index + direction + images.length) % images.length)
+  }
+
+  const ensureSignedIn = () => {
+    if (getStoredAuth()) return true
+    navigate('/login', { state: { from: location } })
+    return false
+  }
+
+  const saveToList = async (list) => {
+    if (!ensureSignedIn()) return
+    setShoppingBusy(list)
+    setShoppingNotice('')
+    try {
+      if (list === 'wishlist') {
+        await addToWishlist(product.id)
+        setShoppingNotice('Đã lưu thiết bị vào Wishlist.')
+      } else {
+        await addToCompare(product.id)
+        setShoppingNotice('Đã thêm thiết bị vào danh sách so sánh.')
+      }
+    } catch (error) {
+      setShoppingNotice(error.message)
+    } finally {
+      setShoppingBusy('')
+    }
+  }
+
+  const rentFromCart = async () => {
+    if (!ensureSignedIn()) return
+    setShoppingBusy('cart')
+    setShoppingNotice('')
+    try {
+      await addToCart(product.id, { quantity: 1, startDate, endDate })
+      navigate('/cart')
+    } catch (error) {
+      setShoppingNotice(error.message)
+      setShoppingBusy('')
+    }
   }
 
   return (
@@ -252,7 +302,7 @@ export default function ProductDetailPage() {
                     <p className="shrink-0 text-right text-xl font-extrabold text-[#f04b0b] sm:text-2xl">{formatCurrency(product.price)}<span className="block text-xs font-medium text-gray-500">mỗi ngày</span></p>
                   </div>
 
-                  <div className="mt-5 rounded-lg border border-gray-200 p-4">
+                  <div className="mt-5 rounded-lg border border-gray-200 p-4" id="rental">
                     <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800"><span aria-hidden="true">▣</span> Chọn thời gian thuê</p>
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
@@ -277,14 +327,20 @@ export default function ProductDetailPage() {
                     <p className="mt-2 text-xs leading-5 text-gray-500">Chưa bao gồm phí giao nhận (nếu có). Chủ thiết bị xác nhận chi phí cuối cùng.</p>
                   </div>
 
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('wishlist')} type="button">♡ Thêm vào Wishlist</button>
+                    <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('compare')} type="button">⇄ So sánh</button>
+                  </div>
+                  {shoppingNotice && <p aria-live="polite" className="mt-2 rounded-md bg-orange-50 px-3 py-2 text-sm text-[#9a3412]">{shoppingNotice}</p>}
+
                   {product.availableQuantity > 0 ? (
-                    <Link className="mt-4 flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-base font-bold text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" state={{ from: { pathname: location.pathname } }} to="/login">
-                      <span aria-hidden="true">↗</span> THUÊ NGAY
-                    </Link>
+                    <button className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-base font-bold text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500] disabled:opacity-60" disabled={shoppingBusy === 'cart'} onClick={rentFromCart} type="button">
+                      <span aria-hidden="true">↗</span> {shoppingBusy === 'cart' ? 'ĐANG THÊM VÀO GIỎ…' : 'THUÊ NGAY'}
+                    </button>
                   ) : (
                     <button className="mt-4 flex min-h-12 w-full cursor-not-allowed items-center justify-center rounded-lg bg-gray-300 px-4 py-3 text-base font-bold text-gray-600" disabled type="button">Hiện không có sẵn</button>
                   )}
-                  <a className="mt-2 flex min-h-11 items-center justify-center rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" href="#owner">NHẮN TIN VỚI CHỦ THIẾT BỊ</a>
+                  <a className="mt-2 flex min-h-11 items-center justify-center rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" href="#owner">XEM CHỦ SỞ HỮU</a>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 border-t border-gray-100 pt-4 text-sm">
                     <div className="flex items-start gap-2"><span className="text-emerald-600">✓</span><div><p className="font-semibold text-gray-800">Thiết bị có sẵn</p><p className="mt-0.5 text-xs text-gray-500">{product.availableQuantity} sản phẩm</p></div></div>
@@ -297,7 +353,14 @@ export default function ProductDetailPage() {
                   <p className="text-sm font-bold uppercase tracking-wide text-[#ed4b0a]">Thông tin chủ sở hữu</p>
                   <h2 className="mt-3 text-lg font-bold text-gray-900">{product.ownerName || 'Chủ thiết bị LensRent'}</h2>
                   <p className="mt-1 text-sm text-gray-600">Chủ thiết bị trên LensRent</p>
-                  <Link className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" state={{ from: { pathname: location.pathname } }} to="/login">Đăng nhập để liên hệ</Link>
+                  {isSignedIn ? (
+                    <>
+                      <p className="mt-2 text-sm leading-6 text-gray-600">Bạn đã đăng nhập. Chọn thời gian thuê và thêm thiết bị vào giỏ để tiếp tục đặt thuê.</p>
+                      <a className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" href="#rental">Chọn thời gian thuê</a>
+                    </>
+                  ) : (
+                    <Link className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" state={{ from: { pathname: location.pathname } }} to="/login">Đăng nhập để đặt thuê</Link>
+                  )}
                 </section>
 
                 <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">

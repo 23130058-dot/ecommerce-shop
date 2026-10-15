@@ -19,7 +19,11 @@ public interface CatalogProductRepository extends Repository<User, Long> {
                    p.tags AS tags,
                    p.daily_price AS price,
                    COALESCE(image.image_url, '') AS "imageKey",
-                   COALESCE(p.stock, 0) AS stock
+                   GREATEST(COALESCE(p.stock, 0) - COALESCE((
+                       SELECT SUM(ci.quantity)
+                       FROM cart_items ci
+                       WHERE ci.product_id = p.id AND ci.reserved_until > CURRENT_TIMESTAMP
+                   ), 0), 0) AS stock
             FROM products p
             JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
@@ -62,7 +66,11 @@ public interface CatalogProductRepository extends Repository<User, Long> {
                    p.deposit_amount AS "depositAmount",
                    COALESCE(image.image_url, '') AS "imageKey",
                    COALESCE(NULLIF(owner.full_name, ''), 'Chủ thiết bị LensRent') AS "ownerName",
-                   COALESCE(p.stock, 0) AS stock
+                   GREATEST(COALESCE(p.stock, 0) - COALESCE((
+                       SELECT SUM(ci.quantity)
+                       FROM cart_items ci
+                       WHERE ci.product_id = p.id AND ci.reserved_until > CURRENT_TIMESTAMP
+                   ), 0), 0) AS stock
             FROM products p
             JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id

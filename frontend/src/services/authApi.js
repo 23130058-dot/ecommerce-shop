@@ -55,6 +55,23 @@ export function getStoredAuth() {
   }
 }
 
+export function updateStoredUser(userUpdates) {
+  const storage = sessionStorage.getItem(AUTH_STORAGE_KEY) ? sessionStorage : localStorage
+  const raw = storage.getItem(AUTH_STORAGE_KEY)
+  if (!raw) return
+
+  try {
+    const auth = JSON.parse(raw)
+    storage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+      ...auth,
+      user: { ...auth.user, ...userUpdates },
+    }))
+    window.dispatchEvent(new Event('lensrent-auth-changed'))
+  } catch {
+    clearAuth()
+  }
+}
+
 export function clearAuth() {
   localStorage.removeItem(AUTH_STORAGE_KEY)
   sessionStorage.removeItem(AUTH_STORAGE_KEY)

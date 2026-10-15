@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuth, getStoredAuth } from '../../services/authApi.js'
+import { API_BASE_URL, clearAuth, getStoredAuth, updateStoredUser } from '../../services/authApi.js'
+import { getAccountProfile } from '../../services/accountApi.js'
 
 import avatar from '../../assets/lensrent/avatar.png'
 import brandMark from '../../assets/lensrent/brand-mark.svg'
@@ -8,6 +9,7 @@ import cartIcon from '../../assets/lensrent/cart.svg'
 import chevronDownIcon from '../../assets/lensrent/chevron-down.svg'
 import searchIcon from '../../assets/lensrent/search.svg'
 import wishlistIcon from '../../assets/lensrent/wishlist.svg'
+import { getCart, getWishlist } from '../../services/shoppingApi.js'
 
 const accountLinks = [
   { to: '/renter', label: 'Trang Renter' },
@@ -23,35 +25,83 @@ export default function Header({
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [auth, setAuth] = useState(() => getStoredAuth())
+  const [cartCount, setCartCount] = useState(0)
+  const [wishlistCount, setWishlistCount] = useState(0)
+  const [shoppingRevision, setShoppingRevision] = useState(0)
   const accountMenuRef = useRef(null)
   const avatarButtonRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
-    const syncAuth = () => setAuth(getStoredAuth())
+    const syncAuth = () => {
+      const currentAuth = getStoredAuth()
+      setAuth(currentAuth)
+      if (!currentAuth) {
+        setCartCount(0)
+        setWishlistCount(0)
+      }
+    }
+    const refreshShopping = () => setShoppingRevision((revision) => revision + 1)
     window.addEventListener('lensrent-auth-changed', syncAuth)
     window.addEventListener('storage', syncAuth)
+    window.addEventListener('lensrent-shopping-changed', refreshShopping)
     return () => {
       window.removeEventListener('lensrent-auth-changed', syncAuth)
       window.removeEventListener('storage', syncAuth)
+      window.removeEventListener('lensrent-shopping-changed', refreshShopping)
     }
   }, [])
+  useEffect(() => {
+    if (!auth?.accessToken) return undefined
+    let mounted = true
+    const accessToken = auth.accessToken
+    getAccountProfile()
+      .then((profile) => {
+        if (!mounted || getStoredAuth()?.accessToken !== accessToken) return
+        const profileFields = {
+          fullName: profile.fullName,
+          email: profile.email,
+          phone: profile.phone,
+          avatarUrl: profile.avatarUrl,
+        }
+        updateStoredUser(profileFields)
+        setAuth((current) => current?.accessToken === accessToken
+          ? { ...current, user: { ...current.user, ...profileFields } }
+          : current)
+      })
+      .catch(() => {})
+    return () => { mounted = false }
+  }, [auth?.accessToken])
+  useEffect(() => {
+    if (!auth) return undefined
+    const controller = new AbortController()
+    Promise.all([getCart({ signal: controller.signal }), getWishlist({ signal: controller.signal })])
+      .then(([cart, wishlist]) => {
+        if (controller.signal.aborted) return
+        setCartCount((cart?.items || []).reduce((total, item) => total + Number(item.quantity || 0), 0))
+        setWishlistCount((wishlist || []).length)
+      })
+      .catch((error) => { if (error.name !== 'AbortError') { setCartCount(0); setWishlistCount(0) } })
+    return () => controller.abort()
+  }, [auth, shoppingRevision])
   useEffect(() => {
     if (!auth?.expiresAt) return undefined
     const delay = auth.expiresAt - Date.now()
     if (delay <= 0) {
       clearAuth()
-      setAuth(null)
       return undefined
     }
 
     const timeoutId = window.setTimeout(() => {
       clearAuth()
-      setAuth(null)
     }, delay)
     return () => window.clearTimeout(timeoutId)
   }, [auth?.expiresAt])
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setAccountMenuOpen(false), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [location.pathname])
   useEffect(() => {
     if (!accountMenuOpen) return undefined
 
@@ -75,10 +125,6 @@ export default function Header({
     }
   }, [accountMenuOpen])
 
-  useEffect(() => {
-    setAccountMenuOpen(false)
-  }, [location.pathname])
-
   const handleLogout = () => {
     clearAuth()
     setAuth(null)
@@ -100,8 +146,8 @@ export default function Header({
           <nav className="hidden items-center gap-6 text-xs font-medium text-gray-600 xl:flex" aria-label="Điều hướng chính">
             <Link className="transition hover:text-[#ff5500]" to="/">Trang chủ</Link>
             <Link className="transition hover:text-[#ff5500]" to="/categories">Danh mục</Link>
-            <Link className="transition hover:text-[#ff5500]" to="/#products">So sánh</Link>
-            <Link className="transition hover:text-[#ff5500]" to="/#products">Wishlist</Link>
+            <Link className="transition hover:text-[#ff5500]" to="/compare">So sánh</Link>
+            <Link className="transition hover:text-[#ff5500]" to="/wishlist">Wishlist</Link>
           </nav>
         </div>
 
@@ -127,11 +173,13 @@ export default function Header({
         <div className="order-2 flex shrink-0 items-center justify-end gap-4 xl:order-3 xl:gap-5">
           {auth && (
             <>
-              <Link className="inline-flex" to="/#products" aria-label="Danh sách yêu thích">
+              <Link className="relative inline-flex" to="/wishlist" aria-label={`Danh sách yêu thích${wishlistCount ? `, ${wishlistCount} thiết bị` : ''}`}>
                 <img className="size-5" src={wishlistIcon} alt="" />
+                {wishlistCount > 0 && <span className="absolute -right-2 -top-2 flex min-w-4 items-center justify-center rounded-full bg-[#ff5500] px-1 text-[10px] font-bold leading-4 text-white">{wishlistCount}</span>}
               </Link>
-              <Link className="inline-flex" to="/#products" aria-label="Giỏ hàng">
+              <Link className="relative inline-flex" to="/cart" aria-label={`Giỏ hàng${cartCount ? `, ${cartCount} thiết bị` : ''}`}>
                 <img className="size-5" src={cartIcon} alt="" />
+                {cartCount > 0 && <span className="absolute -right-2 -top-2 flex min-w-4 items-center justify-center rounded-full bg-[#ff5500] px-1 text-[10px] font-bold leading-4 text-white">{cartCount}</span>}
               </Link>
             </>
           )}
@@ -147,7 +195,7 @@ export default function Header({
               onClick={() => setAccountMenuOpen((open) => !open)}
               type="button"
             >
-              <img className="size-7 rounded-full object-cover" src={avatar} alt="" />
+              <img className="size-7 rounded-full object-cover" src={auth?.user?.avatarUrl ? (auth.user.avatarUrl.startsWith('http') ? auth.user.avatarUrl : `${API_BASE_URL}${auth.user.avatarUrl}`) : avatar} alt="" />
               <img className="size-3" src={chevronDownIcon} alt="" />
             </button>
 
