@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import brandMark from '../assets/lensrent/brand-mark.svg'
 import AccountAvatar from '../components/layout/AccountAvatar.jsx'
 import Footer from '../components/layout/Footer.jsx'
-import { getAdminDashboard } from '../services/adminApi.js'
+import { getAdminDashboard, getAdminRevenueTrend } from '../services/adminApi.js'
 import useCurrentAccount from '../hooks/useCurrentAccount.js'
 
 const adminLinks = [
@@ -33,6 +33,17 @@ function formatRelativeTime(value) {
   const elapsedHours = Math.floor(elapsedMinutes / 60)
   if (elapsedHours < 24) return `${elapsedHours} giờ trước`
   return `${Math.floor(elapsedHours / 24)} ngày trước`
+}
+
+function inputDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
+}
+function defaultDateRange() {
+  const toDate=new Date(); const fromDate=new Date(toDate); fromDate.setDate(fromDate.getDate()-29)
+  return {from:inputDate(fromDate),to:inputDate(toDate)}
+}
+function dateLabel(value) {
+  return value ? new Date(`${value}T00:00:00`).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'
 }
 
 function mapActivity(activity) {
@@ -106,7 +117,8 @@ function RevenueLineChart({ rows, metric }) {
   const plot = { left: 44, top: 14, right: 16, bottom: 30 }
   const plotWidth = width - plot.left - plot.right
   const plotHeight = height - plot.top - plot.bottom
-  const max = Math.ceil(Math.max(...rows.map((row) => row[metric])) / (metric === 'revenue' ? 20 : 250)) * (metric === 'revenue' ? 20 : 250)
+  const unit = metric === 'revenue' ? 20 : 250
+  const max = Math.max(unit, Math.ceil(Math.max(0, ...rows.map((row) => row[metric])) / unit) * unit)
   const points = rows.map((row, index) => ({
     x: plot.left + (rows.length === 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth),
     y: plot.top + plotHeight - (row[metric] / max) * plotHeight,
@@ -145,7 +157,7 @@ function RevenueLineChart({ rows, metric }) {
   )
 }
 
-function CategoryPieChart({ items, total }) {
+function CategoryPieChart({ items, total, subtitle = 'Tháng này' }) {
   const radius = 58
   const circumference = 2 * Math.PI * radius
   const segments = items.reduce((result, item) => {
@@ -177,7 +189,7 @@ function CategoryPieChart({ items, total }) {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-[10px] text-gray-500">Doanh thu</span>
           <strong className="mt-1 text-[15px] text-gray-900">{Number.isFinite(Number(total)) ? `${(Number(total) / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}tr` : '—'}</strong>
-          <span className="mt-0.5 text-[10px] text-gray-400">Tháng này</span>
+          <span className="mt-0.5 text-[10px] text-gray-400">{subtitle}</span>
         </div>
       </div>
       <div className="grid w-full grid-cols-2 gap-x-5 gap-y-4 sm:w-auto sm:grid-cols-1 sm:gap-y-3">
@@ -244,10 +256,14 @@ export default function AdminDashboardPage() {
   const admin = auth?.user
   const adminName = admin?.fullName || admin?.email || 'Quản trị viên'
   const [metric, setMetric] = useState('revenue')
-  const [monthCount, setMonthCount] = useState(6)
+  const [dateRange, setDateRange] = useState(defaultDateRange)
+  const [draftRange, setDraftRange] = useState(defaultDateRange)
   const [dashboard, setDashboard] = useState(null)
+  const [trend, setTrend] = useState(null)
   const [dashboardError, setDashboardError] = useState('')
   const [dashboardLoading, setDashboardLoading] = useState(true)
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendError, setTrendError] = useState('')
 
   useEffect(() => {
     let current = true
@@ -267,17 +283,32 @@ export default function AdminDashboardPage() {
     return () => { current = false }
   }, [])
 
-  const chartRows = useMemo(() => (dashboard?.monthlyRevenue || []).slice(-monthCount).map((item) => ({
-    month: `T${item.month}`,
-    revenue: Number(item.amount) / 1_000_000,
-    rentals: Number(item.completedRentals) || 0,
-  })), [dashboard, monthCount])
-  const pieItems = useMemo(() => (dashboard?.revenueByCategory || []).map((item, index) => ({
+  useEffect(() => {
+    let current = true
+    setTrendLoading(true)
+    setTrendError('')
+    getAdminRevenueTrend(dateRange)
+      .then((response) => { if (current) setTrend(response) })
+      .catch((error) => { if (current) setTrendError(error.message) })
+      .finally(() => { if (current) setTrendLoading(false) })
+    return () => { current = false }
+  }, [dateRange])
+
+  const chartRows = useMemo(() => {
+    const days = (trend?.dailyRevenue || []).map((item) => ({ date: item.date, revenue: Number(item.amount) / 1_000_000, rentals: Number(item.completedRentals) || 0 }))
+    if (days.length <= 30) return days.map((item) => ({ ...item, month: dateLabel(item.date) }))
+    const groupSize = Math.ceil(days.length / 30)
+    return Array.from({ length: Math.ceil(days.length / groupSize) }, (_, index) => {
+      const group = days.slice(index * groupSize, (index + 1) * groupSize)
+      return { month: `${dateLabel(group[0]?.date)}–${dateLabel(group.at(-1)?.date)}`, revenue: group.reduce((sum, row) => sum + row.revenue, 0), rentals: group.reduce((sum, row) => sum + row.rentals, 0) }
+    })
+  }, [trend])
+  const pieItems = useMemo(() => (trend?.revenueByCategory || []).map((item, index) => ({
     name: item.name,
     value: Number(item.percentage) || 0,
     amount: Number(item.amount) || 0,
     color: ['#f45116', '#243b53', '#f8a24b', '#86a5a3', '#8b7cf6', '#cf6d8f'][index % 6],
-  })), [dashboard])
+  })), [trend])
   const recentActivities = (dashboard?.recentActivities || []).map(mapActivity)
 
   return (
@@ -347,15 +378,12 @@ export default function AdminDashboardPage() {
               </div>
               <p className="mt-1 text-[11px] leading-5 text-gray-500 sm:text-xs">Giám sát hoạt động nền tảng, xử lý tranh chấp và quản lý cấu hình LensRent.</p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <label className="flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-[11px] text-gray-600 focus-within:border-orange-400">
-                <AdminIcon name="calendar" className="size-3.5 text-gray-500" />
-                <select aria-label="Khoảng thời gian biểu đồ" value={monthCount} onChange={(event) => setMonthCount(Number(event.target.value))} className="max-w-[125px] bg-transparent outline-none">
-                  <option value={3}>3 tháng gần nhất</option>
-                  <option value={6}>6 tháng gần nhất</option>
-                  <option value={12}>12 tháng gần nhất</option>
-                </select>
-              </label>
+            <div className="flex flex-wrap items-end gap-2">
+              <form onSubmit={(event) => { event.preventDefault(); if (draftRange.from > draftRange.to) { setTrendError('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.'); return } setDateRange(draftRange) }} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 bg-white p-2">
+                <label className="text-[10px] text-gray-500">Từ ngày<input aria-label="Từ ngày" type="date" required max={draftRange.to} value={draftRange.from} onChange={(event) => setDraftRange((range) => ({ ...range, from: event.target.value }))} className="ml-2 rounded border border-gray-200 px-2 py-1.5 text-[11px] text-gray-700" /></label>
+                <label className="text-[10px] text-gray-500">Đến ngày<input aria-label="Đến ngày" type="date" required min={draftRange.from} value={draftRange.to} onChange={(event) => setDraftRange((range) => ({ ...range, to: event.target.value }))} className="ml-2 rounded border border-gray-200 px-2 py-1.5 text-[11px] text-gray-700" /></label>
+                <button disabled={trendLoading} className="rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold text-gray-700 disabled:opacity-50">{trendLoading ? 'Đang tải…' : 'Lọc'}</button>
+              </form>
               <button onClick={() => exportDashboardCsv(pieItems)} disabled={dashboardLoading || pieItems.length === 0} type="button" className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#f45116] px-3 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#df4610] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5">
                 <AdminIcon name="download" className="size-3.5" /> <span>Xuất báo cáo</span>
               </button>
@@ -363,6 +391,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {dashboardError && <div role="alert" className="mb-4 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">{dashboardError}</div>}
+          {trendError && <div role="alert" className="mb-4 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">{trendError}</div>}
 
           <section aria-label="Thống kê tổng quan" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
             <StatCard title="TỔNG DOANH THU (THÁNG)" value={formatMoney(dashboard?.revenueThisMonth)} note="Thanh toán thành công trong tháng" icon="grid" color="orange" />
@@ -376,14 +405,14 @@ export default function AdminDashboardPage() {
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-[13px] font-bold text-gray-800">Biểu Đồ Doanh Thu & Tăng Trưởng</h2>
-                  <p className="mt-1 text-[10px] text-gray-400">Dữ liệu tổng hợp theo tháng trong 12 tháng gần nhất</p>
+                  <p className="mt-1 text-[10px] text-gray-400">Doanh thu và lượt thuê từ {dateRange.from} đến {dateRange.to}</p>
                 </div>
                 <div className="flex rounded-lg bg-gray-100 p-0.5" role="group" aria-label="Chọn dữ liệu biểu đồ">
                   <button type="button" onClick={() => setMetric('revenue')} aria-pressed={metric === 'revenue'} className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${metric === 'revenue' ? 'bg-white text-[#e94b0a] shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>Tiền</button>
                   <button type="button" onClick={() => setMetric('rentals')} aria-pressed={metric === 'rentals'} className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${metric === 'rentals' ? 'bg-white text-[#e94b0a] shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>Lượt</button>
                 </div>
               </div>
-              {chartRows.length > 0 ? <RevenueLineChart rows={chartRows} metric={metric} /> : <div className="flex h-[225px] items-center justify-center text-[11px] text-gray-400">{dashboardLoading ? 'Đang tải biểu đồ…' : 'Chưa có dữ liệu thanh toán/đơn thuê để vẽ biểu đồ.'}</div>}
+              {chartRows.length > 0 ? <RevenueLineChart rows={chartRows} metric={metric} /> : <div className="flex h-[225px] items-center justify-center text-[11px] text-gray-400">{trendLoading ? 'Đang tải biểu đồ…' : trendError ? 'Không tải được báo cáo doanh thu.' : 'Không có dữ liệu trong khoảng ngày đã chọn.'}</div>}
               <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-500">
                 <span className="h-0.5 w-4 rounded-full bg-[#f45116]" />
                 {metric === 'revenue' ? 'Doanh thu (triệu đồng)' : 'Lượt thuê hoàn tất'}
@@ -410,11 +439,11 @@ export default function AdminDashboardPage() {
               <div className="mb-5 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-[13px] font-bold text-gray-800">Doanh thu theo danh mục thiết bị</h2>
-                  <p className="mt-1 text-[10px] text-gray-400">Tỷ trọng doanh thu tháng hiện tại</p>
+                  <p className="mt-1 text-[10px] text-gray-400">Tỷ trọng doanh thu {dateRange.from} – {dateRange.to}</p>
                 </div>
-                <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] text-gray-500">Tháng này⌄</span>
+                <span className="rounded-md bg-gray-50 px-2 py-1 text-[10px] text-gray-500">{trendLoading ? 'Đang tải…' : 'Theo khoảng ngày'}</span>
               </div>
-              {pieItems.length > 0 ? <CategoryPieChart items={pieItems} total={dashboard?.revenueThisMonth} /> : <div className="flex min-h-[170px] items-center justify-center text-center text-[11px] text-gray-400">{dashboardLoading ? 'Đang tải biểu đồ…' : 'Chưa có dữ liệu thanh toán theo danh mục.'}</div>}
+              {pieItems.length > 0 ? <CategoryPieChart items={pieItems} total={pieItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)} subtitle="Khoảng đã chọn" /> : <div className="flex min-h-[170px] items-center justify-center text-center text-[11px] text-gray-400">{trendLoading ? 'Đang tải biểu đồ…' : trendError ? 'Không tải được báo cáo doanh thu.' : 'Chưa có dữ liệu thanh toán theo danh mục trong khoảng ngày này.'}</div>}
             </article>
 
             <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)] sm:p-5">

@@ -61,3 +61,10 @@ export const getRenterDashboard = (options) => request('/renter/dashboard', opti
 export const getCurrentRentalItems = (options) => request('/renter/current-rentals', options)
 export const getRentals = (options) => request('/rentals', options)
 export const getRental = (rentalId, options) => request(`/rentals/${encodeURIComponent(rentalId)}`, options)
+export const cancelRental = (rentalId) => request(`/rentals/${encodeURIComponent(rentalId)}/cancel`, { method: 'PATCH' })
+export const requestRentalReturn = (rentalId) => request(`/rentals/${encodeURIComponent(rentalId)}/return`, { method: 'POST' })
+export const getRentalChats = (rentalId, options) => request(`/rentals/${encodeURIComponent(rentalId)}/chats`, options)
+export const getRentalChatMessages = (rentalId, ownerId, options) => request(`/rentals/${encodeURIComponent(rentalId)}/chats/${encodeURIComponent(ownerId)}/messages`, options)
+export const sendRentalChatMessage = (rentalId, ownerId, body) => request(`/rentals/${encodeURIComponent(rentalId)}/chats/${encodeURIComponent(ownerId)}/messages`, {
+  method: 'POST', body: { body },
+})

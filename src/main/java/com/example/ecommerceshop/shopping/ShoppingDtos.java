@@ -143,4 +143,12 @@ public final class ShoppingDtos {
             BigDecimal dailyPrice,
             BigDecimal subtotal
     ) {}
+
+    public record RentalChatResponse(Long ownerId, String ownerName, String lastMessage,
+                                     LocalDateTime lastMessageAt, Long unreadCount) {}
+
+    public record RentalChatMessageResponse(Long id, Long senderId, String senderName, String body,
+                                            LocalDateTime createdAt, boolean mine) {}
+
+    public record SendRentalChatMessageRequest(@NotBlank String body) {}
 }

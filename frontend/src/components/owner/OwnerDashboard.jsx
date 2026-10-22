@@ -1,12 +1,47 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ownerDashboardData } from '../../data/ownerData'
+import { getOwnerRevenue } from '../../services/ownerApi.js'
 
 function formatMoney(value) {
     return value.toLocaleString('vi-VN') + 'đ'
 }
 
 export default function OwnerDashboard() {
-    const data = ownerDashboardData
+    const [revenueReport, setRevenueReport] = useState(null)
+    const [revenueLoading, setRevenueLoading] = useState(true)
+    const [revenueError, setRevenueError] = useState('')
+
+    useEffect(() => {
+        const today = new Date()
+        const fromDate = new Date(today.getFullYear(), today.getMonth() - 5, 1)
+        const formatDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        const controller = new AbortController()
+        getOwnerRevenue({ from: formatDate(fromDate), to: formatDate(today), signal: controller.signal })
+            .then(setRevenueReport)
+            .catch((error) => { if (error.name !== 'AbortError') setRevenueError(error.message) })
+            .finally(() => { if (!controller.signal.aborted) setRevenueLoading(false) })
+        return () => controller.abort()
+    }, [])
+
+    const revenueChart = useMemo(() => {
+        const today = new Date()
+        return Array.from({ length: 6 }, (_, index) => {
+            const month = new Date(today.getFullYear(), today.getMonth() - 5 + index, 1)
+            const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`
+            const value = (revenueReport?.dailyRevenue || [])
+                .filter((item) => item.date?.startsWith(monthKey))
+                .reduce((total, item) => total + Number(item.amount || 0), 0)
+            return { month: `Tháng ${month.getMonth() + 1}`, value }
+        })
+    }, [revenueReport])
+
+    const today = new Date()
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    const currentMonthRevenue = (revenueReport?.dailyRevenue || [])
+        .filter((item) => item.date?.startsWith(currentMonth))
+        .reduce((total, item) => total + Number(item.amount || 0), 0)
+    const data = { ...ownerDashboardData, revenueChart }
 
     const maxRevenue = Math.max(
         ...data.revenueChart.map((item) => item.value)
@@ -47,8 +82,8 @@ export default function OwnerDashboard() {
 
                     <StatCard
                         title="TỔNG DOANH THU THÁNG"
-                        value={formatMoney(data.totalRevenue)}
-                        note="↑ +12.5% so với tháng trước"
+                        value={revenueLoading && !revenueReport ? 'Đang tải…' : formatMoney(currentMonthRevenue)}
+                        note={revenueError || 'Doanh thu các đơn đã thanh toán trong tháng này'}
                     />
 
                     <StatCard
@@ -83,7 +118,7 @@ export default function OwnerDashboard() {
                             </h2>
 
                             <p className="mt-1 text-xs text-gray-400">
-                                Thống kê 6 tháng đầu năm 2024
+                                {revenueError || 'Doanh thu thực tế trong 6 tháng gần nhất'}
                             </p>
                         </div>
 
@@ -91,7 +126,7 @@ export default function OwnerDashboard() {
 
                             {data.revenueChart.map((item) => {
                                 const height =
-                                    (item.value / maxRevenue) * 100
+                                    maxRevenue > 0 ? (item.value / maxRevenue) * 100 : 0
 
                                 return (
                                     <div

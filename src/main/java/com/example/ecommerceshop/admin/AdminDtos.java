@@ -2,6 +2,8 @@ package com.example.ecommerceshop.admin;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -81,6 +83,18 @@ public final class AdminDtos {
     ) {
     }
 
+    public record UpdateProductRequest(
+            @jakarta.validation.constraints.NotBlank String name,
+            @jakarta.validation.constraints.NotBlank String categoryName,
+            String brandName,
+            String description,
+            @NotNull @DecimalMin("1.0") BigDecimal dailyPrice,
+            @NotNull @DecimalMin("0.0") BigDecimal depositAmount,
+            @NotNull @Min(0) Integer stock,
+            @NotNull @Pattern(regexp = "ACTIVE|INACTIVE|PENDING|PENDING_APPROVAL|WAITING_APPROVAL|REJECTED|SUSPENDED", flags = Pattern.Flag.CASE_INSENSITIVE) String status,
+            String imageKey
+    ) {}
+
     public record RentalAdminResponse(
             Long id,
             String rentalCode,
@@ -147,6 +161,12 @@ public final class AdminDtos {
             List<RecentActivity> recentActivities
     ) {
     }
+
+    public record DailyRevenue(LocalDate date, BigDecimal amount, long completedRentals) {}
+
+    public record RevenueTrendResponse(LocalDate from, LocalDate to, BigDecimal totalRevenue,
+                                       long completedRentals, List<DailyRevenue> dailyRevenue,
+                                       List<CategoryRevenue> revenueByCategory) {}
 
     public record MonthlyRevenue(String month, BigDecimal amount, long completedRentals) {
     }

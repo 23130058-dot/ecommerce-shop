@@ -93,15 +93,18 @@ export default function Header({
   }
 
   const role = auth?.user?.role?.toUpperCase() || 'RENTER'
-  const roleDashboard = role === 'ADMIN'
-    ? { to: '/admin', label: 'Bảng điều khiển quản trị', description: 'Quản lý hệ thống LensRent' }
+  const roleDashboards = role === 'ADMIN'
+    ? [{ to: '/admin', label: 'Khu vực quản trị', description: 'Quản lý người dùng, thiết bị và đơn thuê' }]
     : role === 'OWNER'
-      ? { to: '/owner', label: 'Khu vực chủ thiết bị', description: 'Quản lý tin đăng và đơn thuê' }
-      : { to: '/renter', label: 'Khu vực người thuê', description: 'Theo dõi thuê và thiết bị đã lưu' }
-  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : role === 'OWNER' ? 'Chủ thiết bị' : 'Người thuê'
+      ? [
+          { to: '/owner', label: 'Khu vực chủ thiết bị', description: 'Quản lý thiết bị, đơn thuê và doanh thu' },
+          { to: '/renter', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' },
+        ]
+      : [{ to: '/renter', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' }]
+  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : role === 'OWNER' ? 'Chủ thiết bị · Người thuê' : 'Người thuê'
 
   return (
-    <header className="border-b border-gray-200 bg-white">
+    <header className="border-b border-gray-200 bg-white font-sans text-[#111827]">
       <div className="mx-auto grid min-h-16 max-w-[1280px] grid-cols-[1fr_auto] items-center gap-x-5 gap-y-3 px-4 py-3 sm:px-6 xl:flex xl:gap-8 xl:px-6 xl:py-0">
         <div className="flex min-w-0 items-center gap-8">
           <Link className="flex shrink-0 items-center gap-2" to="/" aria-label="LensRent - Trang chủ">
@@ -183,15 +186,19 @@ export default function Header({
                 </div>
 
                 <div className="py-2">
-                  <Link
-                    className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-orange-50 hover:text-[#e94b0a]"
-                    onClick={() => setAccountMenuOpen(false)}
-                    role="menuitem"
-                    to={roleDashboard.to}
-                  >
-                    <span>{roleDashboard.label}<span className="mt-0.5 block text-[11px] font-normal text-gray-500">{roleDashboard.description}</span></span>
-                    <span aria-hidden="true" className="text-gray-400">›</span>
-                  </Link>
+                  <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Không gian làm việc</p>
+                  {roleDashboards.map((dashboard) => (
+                    <Link
+                      className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-orange-50 hover:text-[#e94b0a]"
+                      key={dashboard.to}
+                      onClick={() => setAccountMenuOpen(false)}
+                      role="menuitem"
+                      to={dashboard.to}
+                    >
+                      <span>{dashboard.label}<span className="mt-0.5 block text-[11px] font-normal text-gray-500">{dashboard.description}</span></span>
+                      <span aria-hidden="true" className="text-gray-400">›</span>
+                    </Link>
+                  ))}
                 </div>
 
                 <div className="border-t border-gray-100 py-2">

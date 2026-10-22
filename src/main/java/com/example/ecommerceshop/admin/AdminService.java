@@ -12,6 +12,9 @@ import com.example.ecommerceshop.admin.AdminDtos.RentalLineAdmin;
 import com.example.ecommerceshop.admin.AdminDtos.UserPageResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserSummary;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.RevenueTrendResponse;
+import com.example.ecommerceshop.admin.AdminDtos.DailyRevenue;
 import com.example.ecommerceshop.user.User;
 import com.example.ecommerceshop.user.UserRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,6 +28,8 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class AdminService {
@@ -224,6 +229,63 @@ public class AdminService {
         if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm.");
     }
 
+    @Transactional
+    public void updateProduct(long productId, UpdateProductRequest request) {
+        Integer exists=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products WHERE id=?",Integer.class,productId);
+        if(exists==null||exists==0) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy sản phẩm.");
+        Long categoryId=jdbcTemplate.query("SELECT id FROM categories WHERE lower(name)=lower(?) ORDER BY id LIMIT 1",
+                (rs,n)->rs.getLong(1),request.categoryName().trim()).stream().findFirst()
+                .orElseThrow(()->new ResponseStatusException(HttpStatus.BAD_REQUEST,"Danh mục sản phẩm không tồn tại."));
+        Long brandId=null;
+        if(request.brandName()!=null&&!request.brandName().isBlank()) {
+            brandId=jdbcTemplate.query("SELECT id FROM brands WHERE lower(name)=lower(?) ORDER BY id LIMIT 1",
+                    (rs,n)->rs.getLong(1),request.brandName().trim()).stream().findFirst()
+                    .orElseGet(()->jdbcTemplate.queryForObject("INSERT INTO brands(name) VALUES(?) RETURNING id",Long.class,request.brandName().trim()));
+        }
+        if(request.imageKey()!=null&&request.imageKey().length()>7_000_000)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Ảnh sản phẩm quá lớn.");
+        jdbcTemplate.update("""
+                UPDATE products SET name=?,category_id=?,brand_id=?,description=?,daily_price=?,deposit_amount=?,stock=?,status=? WHERE id=?
+                """,request.name().trim(),categoryId,brandId,request.description()==null?"":request.description().trim(),
+                request.dailyPrice(),request.depositAmount(),request.stock(),request.status().trim().toUpperCase(Locale.ROOT),productId);
+        if(request.imageKey()!=null&&!request.imageKey().isBlank()) {
+            int changed=jdbcTemplate.update("""
+                    UPDATE product_images SET image_url=?,is_primary=TRUE WHERE id=(
+                      SELECT id FROM product_images WHERE product_id=? ORDER BY is_primary DESC NULLS LAST,id LIMIT 1)
+                    """,request.imageKey().trim(),productId);
+            if(changed==0) jdbcTemplate.update("INSERT INTO product_images(product_id,image_url,is_primary) VALUES(?,?,TRUE)",productId,request.imageKey().trim());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public RevenueTrendResponse getRevenueTrend(LocalDate from,LocalDate to) {
+        if(from==null||to==null||to.isBefore(from)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Khoảng ngày thống kê không hợp lệ.");
+        if(ChronoUnit.DAYS.between(from,to)>365) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Khoảng ngày tối đa là 366 ngày.");
+        List<DailyRevenue> daily=jdbcTemplate.query("""
+                WITH dates AS (SELECT generate_series(CAST(? AS date),CAST(? AS date),interval '1 day')::date d),
+                paid AS (SELECT paid_at::date d,SUM(amount) amount FROM payments
+                         WHERE UPPER(COALESCE(status,'')) IN ('PAID','SUCCESS','COMPLETED')
+                           AND paid_at>=CAST(? AS date) AND paid_at<CAST(? AS date)+interval '1 day' GROUP BY paid_at::date),
+                completed AS (SELECT created_at::date d,COUNT(*) amount FROM rentals
+                         WHERE UPPER(COALESCE(status,'')) IN ('COMPLETED','COMPLETE','RETURNED','CLOSED')
+                           AND created_at>=CAST(? AS date) AND created_at<CAST(? AS date)+interval '1 day' GROUP BY created_at::date)
+                SELECT dates.d,COALESCE(paid.amount,0) amount,COALESCE(completed.amount,0) rentals
+                FROM dates LEFT JOIN paid USING(d) LEFT JOIN completed USING(d) ORDER BY dates.d
+                """,(rs,n)->new DailyRevenue(rs.getObject("d",LocalDate.class),rs.getBigDecimal("amount"),rs.getLong("rentals")),from,to,from,to,from,to);
+        BigDecimal total=daily.stream().map(DailyRevenue::amount).reduce(BigDecimal.ZERO,BigDecimal::add);
+        long completed=daily.stream().mapToLong(DailyRevenue::completedRentals).sum();
+        List<AdminDtos.CategoryRevenue> categories=jdbcTemplate.query("""
+                WITH paid AS (SELECT DISTINCT rental_id FROM payments WHERE UPPER(COALESCE(status,'')) IN ('PAID','SUCCESS','COMPLETED')
+                              AND paid_at>=CAST(? AS date) AND paid_at<CAST(? AS date)+interval '1 day'),
+                totals AS (SELECT COALESCE(c.name,'Khác') name,SUM(ri.subtotal) amount
+                           FROM paid JOIN rental_items ri ON ri.rental_id=paid.rental_id AND UPPER(COALESCE(ri.status,''))<>'CANCELLED'
+                           JOIN products p ON p.id=ri.product_id LEFT JOIN categories c ON c.id=p.category_id GROUP BY 1)
+                SELECT name,amount,CASE WHEN SUM(amount) OVER()=0 THEN 0 ELSE ROUND(amount*100.0/SUM(amount) OVER(),2) END percentage
+                FROM totals ORDER BY amount DESC
+                """,(rs,n)->new AdminDtos.CategoryRevenue(rs.getString("name"),rs.getBigDecimal("amount"),rs.getDouble("percentage")),from,to);
+        return new RevenueTrendResponse(from,to,total,completed,daily,categories);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<RentalAdminResponse> getOrders(String search, String requestedStatus, int page, int size) {
         int safePage = Math.max(page, 0);
@@ -415,6 +477,7 @@ public class AdminService {
                            COALESCE(SUM(rental_items.subtotal), 0) AS amount
                     FROM paid_rentals
                     JOIN rental_items ON rental_items.rental_id = paid_rentals.rental_id
+                        AND UPPER(COALESCE(rental_items.status,'')) <> 'CANCELLED'
                     JOIN products ON products.id = rental_items.product_id
                     LEFT JOIN categories ON categories.id = products.category_id
                     GROUP BY COALESCE(categories.name, 'Khác')

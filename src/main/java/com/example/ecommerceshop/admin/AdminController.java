@@ -6,6 +6,8 @@ import com.example.ecommerceshop.admin.AdminDtos.ProductAdminResponse;
 import com.example.ecommerceshop.admin.AdminDtos.RentalAdminDetail;
 import com.example.ecommerceshop.admin.AdminDtos.RentalAdminResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateProductStatusRequest;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.RevenueTrendResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateUserRoleRequest;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateUserStatusRequest;
 import com.example.ecommerceshop.admin.AdminDtos.UserPageResponse;
@@ -22,6 +24,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -35,6 +40,13 @@ public class AdminController {
     @GetMapping("/dashboard")
     public DashboardResponse dashboard() {
         return adminService.getDashboard();
+    }
+
+    @GetMapping("/dashboard/revenue")
+    public RevenueTrendResponse revenueTrend(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to) {
+        return adminService.getRevenueTrend(from,to);
     }
 
     @GetMapping("/users")
@@ -77,6 +89,12 @@ public class AdminController {
     public void updateProductStatus(@PathVariable long id,
                                     @Valid @RequestBody UpdateProductStatusRequest request) {
         adminService.updateProductStatus(id, request.status());
+    }
+
+    @PutMapping("/products/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateProduct(@PathVariable long id,@Valid @RequestBody UpdateProductRequest request) {
+        adminService.updateProduct(id,request);
     }
 
     @GetMapping("/orders")

@@ -3,6 +3,9 @@ package com.example.ecommerceshop.owner;
 import com.example.ecommerceshop.owner.OwnerDtos.BookingResponse;
 import com.example.ecommerceshop.owner.OwnerDtos.CreateProductRequest;
 import com.example.ecommerceshop.owner.OwnerDtos.ProductResponse;
+import com.example.ecommerceshop.owner.OwnerDtos.DailyRevenue;
+import com.example.ecommerceshop.owner.OwnerDtos.ProductRevenue;
+import com.example.ecommerceshop.owner.OwnerDtos.RevenueResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -13,6 +16,9 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class OwnerService {
@@ -108,6 +114,157 @@ public class OwnerService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tải được thiết bị vừa tạo."));
     }
 
+    @Transactional
+    public ProductResponse updateProduct(long ownerId, long productId, CreateProductRequest request) {
+        Integer ownedProductCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM products WHERE id = ? AND owner_id = ?", Integer.class, productId, ownerId);
+        if (ownedProductCount == null || ownedProductCount == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn.");
+        }
+        if (request.dailyPrice() == null || request.quantity() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập giá thuê và số lượng thiết bị.");
+        }
+
+        String status = request.status() == null || request.status().isBlank()
+                ? "ACTIVE" : request.status().trim().toUpperCase(Locale.ROOT);
+        if (!List.of("ACTIVE", "INACTIVE").contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái thiết bị không hợp lệ.");
+        }
+        String categorySlug = request.category().trim().toLowerCase(Locale.ROOT);
+        if ("drone".equals(categorySlug)) categorySlug = "studio";
+        List<Long> categoryIds = jdbc.query("SELECT id FROM categories WHERE slug = ? ORDER BY id LIMIT 1",
+                (rs, rowNum) -> rs.getLong(1), categorySlug);
+        if (categoryIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Danh mục thiết bị không tồn tại.");
+        }
+
+        Long brandId = null;
+        String brand = request.brand() == null ? "" : request.brand().trim();
+        if (!brand.isBlank()) {
+            List<Long> brandIds = jdbc.query("SELECT id FROM brands WHERE lower(name) = lower(?) ORDER BY id LIMIT 1",
+                    (rs, rowNum) -> rs.getLong(1), brand);
+            brandId = brandIds.isEmpty()
+                    ? jdbc.queryForObject("INSERT INTO brands (name) VALUES (?) RETURNING id", Long.class, brand)
+                    : brandIds.get(0);
+        }
+
+        String imageUrl = request.imageUrl() == null ? "" : request.imageUrl().trim();
+        if (imageUrl.length() > 7_000_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh quá lớn. Vui lòng chọn ảnh dưới 5 MB.");
+        }
+        String itemType = request.type() == null || request.type().isBlank()
+                ? request.name().trim() : request.type().trim();
+        String tags = request.tags() == null ? "" : request.tags().trim().replace(',', '|');
+        int changed = jdbc.update("""
+                UPDATE products
+                SET category_id = ?, brand_id = ?, name = ?, description = ?, daily_price = ?,
+                    deposit_amount = ?, stock = ?, status = ?, item_type = ?, tags = ?
+                WHERE id = ? AND owner_id = ?
+                """, categoryIds.get(0), brandId, request.name().trim(),
+                request.description() == null ? "" : request.description().trim(), request.dailyPrice(),
+                request.depositAmount() == null ? BigDecimal.ZERO : request.depositAmount(),
+                request.quantity(), status, itemType, tags, productId, ownerId);
+        if (changed == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn.");
+        }
+
+        if (!imageUrl.isBlank()) {
+            int imageChanged = jdbc.update("""
+                    UPDATE product_images SET image_url = ?, is_primary = TRUE
+                    WHERE id = (SELECT id FROM product_images WHERE product_id = ?
+                                ORDER BY is_primary DESC NULLS LAST, id LIMIT 1)
+                    """, imageUrl, productId);
+            if (imageChanged == 0) {
+                jdbc.update("INSERT INTO product_images (product_id, image_url, is_primary) VALUES (?, ?, TRUE)",
+                        productId, imageUrl);
+            }
+        }
+
+        return getProducts(ownerId).stream().filter(product -> product.id().equals(productId)).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tải được thiết bị vừa cập nhật."));
+    }
+
+    @Transactional(readOnly = true)
+    public RevenueResponse getRevenue(long ownerId, LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng ngày lọc doanh thu không hợp lệ.");
+        }
+        if (ChronoUnit.DAYS.between(from, to) > 365) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn khoảng thời gian tối đa 366 ngày.");
+        }
+
+        List<DailyRevenue> daily = jdbc.query("""
+                WITH dates AS (
+                    SELECT generate_series(CAST(? AS date), CAST(? AS date), interval '1 day')::date AS revenue_date
+                ), paid_rentals AS (
+                    SELECT rental_id, MIN(paid_at) AS paid_at
+                    FROM payments
+                    WHERE UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
+                      AND paid_at >= CAST(? AS date)
+                      AND paid_at < CAST(? AS date) + interval '1 day'
+                    GROUP BY rental_id
+                ), owner_daily AS (
+                    SELECT paid_rentals.paid_at::date AS revenue_date,
+                           COALESCE(SUM(ri.subtotal), 0) AS amount
+                    FROM paid_rentals
+                    JOIN rental_items ri ON ri.rental_id = paid_rentals.rental_id
+                    JOIN products p ON p.id = ri.product_id
+                    WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
+                    GROUP BY paid_rentals.paid_at::date
+                )
+                SELECT dates.revenue_date, COALESCE(owner_daily.amount, 0) AS amount
+                FROM dates LEFT JOIN owner_daily USING (revenue_date)
+                ORDER BY dates.revenue_date
+                """, (rs, rowNum) -> new DailyRevenue(rs.getDate("revenue_date").toLocalDate(),
+                rs.getBigDecimal("amount")), from, to, from, to, ownerId);
+
+        List<ProductRevenue> productRevenue = jdbc.query("""
+                WITH paid_rentals AS (
+                    SELECT rental_id
+                    FROM payments
+                    WHERE UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
+                      AND paid_at >= CAST(? AS date)
+                      AND paid_at < CAST(? AS date) + interval '1 day'
+                    GROUP BY rental_id
+                )
+                SELECT p.id AS product_id, p.name, p.item_type AS type,
+                       COALESCE(image.image_url, '') AS image_key, p.daily_price,
+                       COALESCE(SUM(CASE WHEN paid_rentals.rental_id IS NOT NULL AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED' THEN ri.subtotal ELSE 0 END), 0) AS amount,
+                       COUNT(DISTINCT CASE WHEN UPPER(COALESCE(ri.status,'')) <> 'CANCELLED' THEN paid_rentals.rental_id END) AS paid_rental_count
+                FROM products p
+                LEFT JOIN rental_items ri ON ri.product_id = p.id
+                LEFT JOIN paid_rentals ON paid_rentals.rental_id = ri.rental_id
+                LEFT JOIN LATERAL (
+                    SELECT image_url FROM product_images WHERE product_id = p.id
+                    ORDER BY is_primary DESC NULLS LAST, id LIMIT 1
+                ) image ON TRUE
+                WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
+                GROUP BY p.id, p.name, p.item_type, p.daily_price, image.image_url
+                ORDER BY amount DESC, p.name
+                """, (rs, rowNum) -> new ProductRevenue(rs.getLong("product_id"), rs.getString("name"),
+                rs.getString("type"), rs.getString("image_key"), rs.getBigDecimal("daily_price"),
+                rs.getBigDecimal("amount"), rs.getLong("paid_rental_count")), from, to, ownerId);
+
+        BigDecimal totalRevenue = daily.stream().map(DailyRevenue::amount).filter(amount -> amount != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Long paidRentalCount = jdbc.queryForObject("""
+                SELECT COUNT(DISTINCT paid_rentals.rental_id)
+                FROM (
+                    SELECT rental_id FROM payments
+                    WHERE UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
+                      AND paid_at >= CAST(? AS date)
+                      AND paid_at < CAST(? AS date) + interval '1 day'
+                    GROUP BY rental_id
+                ) paid_rentals
+                JOIN rental_items ri ON ri.rental_id = paid_rentals.rental_id
+                JOIN products p ON p.id = ri.product_id
+                WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
+                """, Long.class, from, to, ownerId);
+        Long productCount = jdbc.queryForObject("SELECT COUNT(*) FROM products WHERE owner_id = ?", Long.class, ownerId);
+        return new RevenueResponse(from, to, totalRevenue, paidRentalCount == null ? 0 : paidRentalCount,
+                productCount == null ? 0 : productCount, daily, productRevenue);
+    }
+
     @Transactional(readOnly = true)
     public List<BookingResponse> getBookings(long ownerId) {
         return jdbc.query("""
@@ -133,7 +290,7 @@ public class OwnerService {
                 LEFT JOIN LATERAL (
                     SELECT status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1
                 ) payment ON TRUE
-                WHERE p.owner_id = ?
+                WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
                 GROUP BY r.id, r.rental_code, u.full_name, u.phone, r.contact_phone,
                          payment.status, r.created_at
                 ORDER BY r.created_at DESC, r.id DESC
@@ -177,6 +334,12 @@ public class OwnerService {
                   AND NOT EXISTS (SELECT 1 FROM rental_items WHERE rental_id = rentals.id
                                   AND UPPER(COALESCE(status, 'PENDING')) = 'PENDING')
                 """, rentalId);
+        if (changed > 0) jdbc.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                SELECT renter_id,'BOOKING','Thiết bị đã được Owner xác nhận',
+                       'Đơn thuê '||COALESCE(rental_code,'#'||id::text)||' đã được xác nhận.','/renter/orders/'||id
+                FROM rentals WHERE id=?
+                """,rentalId);
     }
 
     @Transactional
@@ -222,5 +385,11 @@ public class OwnerService {
                       AND UPPER(COALESCE(status, '')) NOT IN ('COMPLETED', 'CANCELLED', 'CANCELED', 'REJECTED')
                 )
                 """, rentalId);
+        jdbc.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                SELECT renter_id,'RETURN','Owner đã hoàn tất trả thiết bị',
+                       'Quy trình hoàn trả cho đơn '||COALESCE(rental_code,'#'||id::text)||' đã được cập nhật.','/renter/orders/'||id
+                FROM rentals WHERE id=?
+                """,rentalId);
     }
 }

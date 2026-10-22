@@ -93,7 +93,7 @@ export default function ComparePage() {
   const columns = Math.max(items.length, 1)
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] text-gray-900">
+    <div className="min-h-screen bg-[#f7f8fa] font-sans text-gray-900">
       <Header />
       <main className="mx-auto min-h-[560px] max-w-[1120px] px-4 py-7 sm:px-6 lg:px-8">
         <nav className="mb-3 text-sm text-gray-500"><Link className="hover:text-[#ff5500]" to="/">Trang chủ</Link><span className="mx-2">›</span>So sánh thiết bị</nav>

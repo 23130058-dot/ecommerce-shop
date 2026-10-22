@@ -31,6 +31,11 @@ export function getAdminDashboard() {
   return requestAdminApi('/api/admin/dashboard')
 }
 
+export function getAdminRevenueTrend({ from, to } = {}) {
+  const params = new URLSearchParams({ from, to })
+  return requestAdminApi(`/api/admin/dashboard/revenue?${params}`)
+}
+
 export function getAdminUsers({ search = '', role = 'all', status = 'all', page = 0, size = 10 } = {}) {
   const params = new URLSearchParams({ page: String(page), size: String(size) })
   if (search.trim()) params.set('search', search.trim())
@@ -68,6 +73,13 @@ export function updateAdminProductStatus(productId, status) {
   return requestAdminApi(`/api/admin/products/${productId}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+export function updateAdminProduct(productId, product) {
+  return requestAdminApi(`/api/admin/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(product),
   })
 }
 

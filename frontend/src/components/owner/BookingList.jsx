@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import OwnerIcon from './OwnerIcon'
-import { completeOwnerBooking, confirmOwnerBooking, getOwnerBookings } from '../../services/ownerApi.js'
+import { cancelOwnerBooking, completeOwnerBooking, confirmOwnerBooking, getOwnerBookings } from '../../services/ownerApi.js'
 
 const formatMoney = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0)) + ' đ'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`)) : '—'
@@ -58,6 +58,16 @@ export default function BookingList() {
         }
     }
 
+    const cancel = async (rentalId) => {
+        if (!window.confirm('Hủy sản phẩm của bạn trong đơn thuê này? Nếu đơn có sản phẩm Owner khác, các sản phẩm đó vẫn được giữ.')) return
+        setBusyId(rentalId); setError('')
+        try {
+            await cancelOwnerBooking(rentalId)
+            const items = await getOwnerBookings()
+            setBookings(Array.isArray(items) ? items : [])
+        } catch (actionError) { setError(actionError.message) } finally { setBusyId(null) }
+    }
+
     const statusClass = (status) => status === 'PENDING' ? 'bg-orange-50 text-orange-600'
         : ['ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(status) ? 'bg-blue-50 text-blue-600'
             : status === 'CANCELLED' || status === 'CANCELED' ? 'bg-gray-100 text-gray-600'
@@ -97,7 +107,7 @@ export default function BookingList() {
                             <td className="whitespace-nowrap px-4 py-4 font-semibold">{formatMoney(Number(booking.rentalAmount || 0) + Number(booking.depositAmount || 0))}</td>
                             <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(booking.status)}`}>{statusLabels[booking.status] || booking.status}</span></td>
                             <td className="px-4 py-4"><span className={booking.paymentStatus === 'PAID' ? 'font-semibold text-emerald-600' : 'text-gray-500'}>{booking.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}</span></td>
-                            <td className="px-4 py-4">{booking.status === 'PENDING' ? <button disabled={busyId === booking.rentalId} onClick={() => confirm(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg bg-[#F45116] px-3 py-2 text-xs font-semibold text-white hover:bg-[#df450f] disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận đơn'}</button> : ['CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(booking.status) ? <button disabled={busyId === booking.rentalId} onClick={() => complete(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Đã trả thiết bị'}</button> : <span className="text-xs text-gray-400">—</span>}</td>
+                            <td className="px-4 py-4"><div className="flex flex-col items-start gap-1.5">{booking.status === 'PENDING' && <button disabled={busyId === booking.rentalId} onClick={() => confirm(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg bg-[#F45116] px-3 py-2 text-xs font-semibold text-white hover:bg-[#df450f] disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận đơn'}</button>}{['CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(booking.status) && <button disabled={busyId === booking.rentalId} onClick={() => complete(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Đã trả thiết bị'}</button>}{['PENDING','CONFIRMED'].includes(booking.status) && booking.startDate > new Date().toISOString().slice(0,10) && <button disabled={busyId === booking.rentalId} onClick={() => cancel(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60">Hủy sản phẩm</button>}{!['PENDING','CONFIRMED','ACTIVE','IN_PROGRESS','RENTING'].includes(booking.status) && <span className="text-xs text-gray-400">—</span>}</div></td>
                         </tr>)}</tbody>
                     </table>
                 </div>}
