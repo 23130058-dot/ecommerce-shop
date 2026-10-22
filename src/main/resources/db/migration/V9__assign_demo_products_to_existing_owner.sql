@@ -1,29 +1,26 @@
 DO $$
 DECLARE
-    owner_account_count INTEGER;
+    owner_account_id BIGINT;
 BEGIN
-    SELECT COUNT(*)
-    INTO owner_account_count
+    SELECT id
+    INTO owner_account_id
     FROM users
     WHERE LOWER(email) = '23130058@st.hcmuaf.edu.vn';
 
-    IF owner_account_count <> 1 THEN
-        RAISE EXCEPTION 'Expected exactly one account for 23130058@st.hcmuaf.edu.vn, found %', owner_account_count;
+    -- Developers use separate databases, so the designated owner may not have
+    -- registered yet. Keep demo products assigned to the catalog owner until
+    -- that account exists instead of failing application startup.
+    IF owner_account_id IS NOT NULL THEN
+        UPDATE users
+        SET role = 'USER'
+        WHERE id = owner_account_id;
+
+        UPDATE products
+        SET owner_id = owner_account_id
+        WHERE owner_id IN (
+            SELECT id
+            FROM users
+            WHERE LOWER(email) = 'catalog@lensrent.local'
+        );
     END IF;
 END $$;
-
-UPDATE users
-SET role = 'OWNER'
-WHERE LOWER(email) = '23130058@st.hcmuaf.edu.vn';
-
-UPDATE products
-SET owner_id = (
-    SELECT id
-    FROM users
-    WHERE LOWER(email) = '23130058@st.hcmuaf.edu.vn'
-)
-WHERE owner_id IN (
-    SELECT id
-    FROM users
-    WHERE LOWER(email) = 'catalog@lensrent.local'
-);
