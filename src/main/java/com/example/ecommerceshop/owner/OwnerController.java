@@ -36,6 +36,11 @@ public class OwnerController {
         this.workspaceService = workspaceService;
     }
 
+    @GetMapping("/dashboard")
+    public OwnerDashboardResponse dashboard(@AuthenticationPrincipal Jwt jwt) {
+        return workspaceService.dashboard(userId(jwt));
+    }
+
     @GetMapping("/products")
     public List<ProductResponse> products(@AuthenticationPrincipal Jwt jwt) {
         return ownerService.getProducts(userId(jwt));

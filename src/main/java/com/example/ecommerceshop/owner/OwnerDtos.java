@@ -145,4 +145,15 @@ public final class OwnerDtos {
     public record NotificationResponse(Long id, String type, String title, String message,
                                        String targetUrl, LocalDateTime createdAt,
                                        LocalDateTime readAt) {}
+
+    public record OwnerDashboardProduct(Long productId, String name, BigDecimal dailyPrice,
+                                        String imageKey, Integer availableQuantity,
+                                        Integer currentlyRentedQuantity, String status) {}
+
+    public record OwnerDashboardResponse(String fullName, long totalProducts, long activeRentals,
+                                         long completedRentals, long pendingRequests,
+                                         BigDecimal averageRating, BigDecimal revenueThisMonth,
+                                         List<BookingResponse> recentBookings,
+                                         List<OwnerDashboardProduct> recentProducts,
+                                         List<TransactionResponse> recentTransactions) {}
 }

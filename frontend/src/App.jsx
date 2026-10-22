@@ -31,6 +31,12 @@ function CategoryRoute() {
   return <CategoryPage categorySlug={categorySlug} />
 }
 
+function LegacyAccountSettingsRoute() {
+  const location = useLocation()
+  const target = location.pathname.replace(/^\/renter\/profile/, '/account/settings')
+  return <Navigate to={`${target}${location.search}${location.hash}`} replace />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -53,8 +59,10 @@ function App() {
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />
-        <Route path="/renter/profile" element={<AccountSettingsPage />} />
-        <Route path="/renter/profile/*" element={<AccountSettingsPage />} />
+        <Route path="/account/settings" element={<AccountSettingsPage />} />
+        <Route path="/account/settings/*" element={<AccountSettingsPage />} />
+        <Route path="/renter/profile" element={<LegacyAccountSettingsRoute />} />
+        <Route path="/renter/profile/*" element={<LegacyAccountSettingsRoute />} />
         <Route path="/renter/orders/:rentalId" element={<OrderConfirmationPage />} />
         <Route path="/renter/*" element={<RenterPage />} />
       </Routes>

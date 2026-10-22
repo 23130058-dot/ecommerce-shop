@@ -240,19 +240,6 @@ export default function OwnerSidebar() {
                         </div>
                     </div>
                 ))}
-                <div className="mt-3 border-t border-gray-100 pt-3">
-                    <button
-                        type="button"
-                        onClick={() => navigate('/renter/profile')}
-                        aria-current={isActive('/renter/profile') ? 'page' : undefined}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${isActive('/renter/profile') ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-                    >
-                        <span className="flex w-5 shrink-0 items-center justify-center" aria-hidden="true">
-                            <MenuIcon type="settings" active={isActive('/renter/profile')} />
-                        </span>
-                        <span>Cài đặt tài khoản</span>
-                    </button>
-                </div>
             </nav>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4">

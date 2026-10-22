@@ -20,6 +20,94 @@ public class OwnerWorkspaceService {
     public OwnerWorkspaceService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Transactional(readOnly = true)
+    public OwnerDashboardResponse dashboard(long ownerId) {
+        OwnerDashboardStats stats = jdbc.queryForObject("""
+                SELECT
+                    (SELECT COUNT(*) FROM products WHERE owner_id = ?) AS total_products,
+                    (SELECT COUNT(DISTINCT ri.rental_id)
+                     FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                     WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) IN
+                       ('CONFIRMED','ACTIVE','IN_PROGRESS','RENTING','RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN')) AS active_rentals,
+                    (SELECT COUNT(DISTINCT ri.rental_id)
+                     FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                     WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) = 'COMPLETED') AS completed_rentals,
+                    (SELECT COUNT(DISTINCT ri.rental_id)
+                     FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                     WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) = 'PENDING'
+                       AND (SELECT UPPER(COALESCE(pay.status, '')) FROM payments pay
+                            WHERE pay.rental_id = ri.rental_id ORDER BY pay.id DESC LIMIT 1)
+                           IN ('PAID','SUCCESS','COMPLETED')) AS pending_requests,
+                    (SELECT COALESCE(AVG(rating), 0) FROM reviews
+                     WHERE reviewed_user_id = ? AND is_public = TRUE) AS average_rating,
+                    (SELECT COALESCE(SUM(ri.subtotal), 0)
+                     FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                     WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) <> 'CANCELLED'
+                       AND EXISTS (SELECT 1 FROM payments pay WHERE pay.rental_id = ri.rental_id
+                                   AND UPPER(COALESCE(pay.status, '')) IN ('PAID','SUCCESS','COMPLETED')
+                                   AND pay.paid_at >= date_trunc('month', CURRENT_DATE)
+                                   AND pay.paid_at < date_trunc('month', CURRENT_DATE) + interval '1 month')) AS revenue_this_month
+                """, (rs, n) -> new OwnerDashboardStats(
+                rs.getLong("total_products"), rs.getLong("active_rentals"),
+                rs.getLong("completed_rentals"), rs.getLong("pending_requests"),
+                rs.getBigDecimal("average_rating"), rs.getBigDecimal("revenue_this_month")),
+                ownerId, ownerId, ownerId, ownerId, ownerId, ownerId);
+
+        String fullName = jdbc.query("SELECT COALESCE(full_name, email, 'Chủ thiết bị') FROM users WHERE id = ?",
+                rs -> rs.next() ? rs.getString(1) : "Chủ thiết bị", ownerId);
+        List<BookingResponse> recentBookings = jdbc.query("""
+                SELECT r.id AS rental_id, r.rental_code, COALESCE(u.full_name, u.email, 'Khách thuê') AS renter_name,
+                       COALESCE(u.phone, r.contact_phone, '') AS renter_phone,
+                       STRING_AGG(p.name || ' × ' || ri.quantity, ', ' ORDER BY ri.id) AS product_names,
+                       MIN(ri.start_date) AS start_date, MAX(ri.end_date) AS end_date,
+                       COALESCE(SUM(ri.subtotal), 0) AS rental_amount,
+                       COALESCE(SUM(p.deposit_amount * ri.quantity), 0) AS deposit_amount,
+                       CASE
+                           WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) = 'COMPLETED') THEN 'COMPLETED'
+                           WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) IN ('CONFIRMED','ACTIVE','IN_PROGRESS','RENTING')) THEN 'CONFIRMED'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE','IN_PROGRESS','RENTING')) THEN 'ACTIVE'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'PENDING') THEN 'PENDING'
+                           ELSE MAX(r.status)
+                       END AS status,
+                       COALESCE(payment.status, 'UNPAID') AS payment_status, r.created_at
+                FROM rentals r JOIN users u ON u.id = r.renter_id
+                JOIN rental_items ri ON ri.rental_id = r.id JOIN products p ON p.id = ri.product_id
+                LEFT JOIN LATERAL (SELECT status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1) payment ON TRUE
+                WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) = 'PENDING'
+                  AND UPPER(COALESCE(payment.status, '')) IN ('PAID','SUCCESS','COMPLETED')
+                GROUP BY r.id, r.rental_code, u.full_name, u.email, u.phone, r.contact_phone, payment.status, r.created_at
+                ORDER BY r.created_at DESC, r.id DESC LIMIT 5
+                """, (rs, n) -> new BookingResponse(rs.getLong("rental_id"), rs.getString("rental_code"),
+                rs.getString("renter_name"), rs.getString("renter_phone"), rs.getString("product_names"),
+                rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
+                rs.getBigDecimal("rental_amount"), rs.getBigDecimal("deposit_amount"), rs.getString("status"),
+                rs.getString("payment_status"), local(rs.getTimestamp("created_at"))), ownerId);
+
+        List<OwnerDashboardProduct> recentProducts = jdbc.query("""
+                SELECT p.id, p.name, p.daily_price, COALESCE(img.image_url, '') AS image_key,
+                       COALESCE(p.stock, 0) AS available_quantity, p.status,
+                       COALESCE(rented.quantity, 0)::integer AS rented_quantity
+                FROM products p
+                LEFT JOIN LATERAL (SELECT image_url FROM product_images WHERE product_id = p.id
+                                   ORDER BY is_primary DESC NULLS LAST, id LIMIT 1) img ON TRUE
+                LEFT JOIN LATERAL (SELECT SUM(ri.quantity) AS quantity FROM rental_items ri
+                                   WHERE ri.product_id = p.id AND UPPER(COALESCE(ri.status, '')) IN
+                                   ('PENDING','CONFIRMED','ACTIVE','IN_PROGRESS','RENTING','RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN')) rented ON TRUE
+                WHERE p.owner_id = ? ORDER BY p.created_at DESC, p.id DESC LIMIT 5
+                """, (rs, n) -> new OwnerDashboardProduct(rs.getLong("id"), rs.getString("name"),
+                rs.getBigDecimal("daily_price"), rs.getString("image_key"), rs.getInt("available_quantity"),
+                rs.getInt("rented_quantity"), rs.getString("status")), ownerId);
+
+        List<TransactionResponse> recentTransactions = transactionRows(ownerId, true);
+        return new OwnerDashboardResponse(fullName, stats.totalProducts(), stats.activeRentals(),
+                stats.completedRentals(), stats.pendingRequests(), stats.averageRating(),
+                stats.revenueThisMonth(), recentBookings, recentProducts, recentTransactions);
+    }
+
+    private record OwnerDashboardStats(long totalProducts, long activeRentals, long completedRentals,
+                                       long pendingRequests, BigDecimal averageRating,
+                                       BigDecimal revenueThisMonth) {}
+
+    @Transactional(readOnly = true)
     public List<ScheduleResponse> schedules(long ownerId) {
         return jdbc.query("""
                 SELECT p.id, p.name, COALESCE(img.image_url, '') image_key, p.daily_price,
@@ -128,7 +216,11 @@ public class OwnerWorkspaceService {
 
     @Transactional(readOnly = true)
     public List<TransactionResponse> transactions(long ownerId) {
-        return jdbc.query("""
+        return transactionRows(ownerId, false);
+    }
+
+    private List<TransactionResponse> transactionRows(long ownerId, boolean recentOnly) {
+        String sql = """
                 SELECT * FROM (
                     SELECT r.id id, 'Thuê thiết bị · '||COALESCE(r.rental_code,'#'||r.id::text) title,
                            STRING_AGG(DISTINCT p.name, ', ' ORDER BY p.name) subtitle, 'RENTAL_INCOME' type,
@@ -142,7 +234,8 @@ public class OwnerWorkspaceService {
                     SELECT -id, 'Yêu cầu rút tiền','Rút tiền thủ công','WITHDRAWAL',-amount,status,created_at
                     FROM owner_withdrawal_requests WHERE owner_id=?
                 ) tx ORDER BY created_at DESC NULLS LAST,id DESC
-                """,(rs,n)->new TransactionResponse(rs.getLong("id"),rs.getString("title"),rs.getString("subtitle"),
+                """ + (recentOnly ? " LIMIT 5" : "");
+        return jdbc.query(sql,(rs,n)->new TransactionResponse(rs.getLong("id"),rs.getString("title"),rs.getString("subtitle"),
                 rs.getString("type"),rs.getBigDecimal("amount"),rs.getString("status"),local(rs.getTimestamp("created_at"))),ownerId,ownerId);
     }
 

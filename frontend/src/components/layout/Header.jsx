@@ -18,6 +18,12 @@ export default function Header({
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const { auth, setAuth } = useCurrentAccount()
+  const role = auth?.user?.role?.toUpperCase() || 'RENTER'
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => {
+    const saved = window.localStorage.getItem('lensrent.settings.workspace')
+    if (role === 'OWNER' && (saved === 'OWNER' || saved === 'RENTER')) return saved
+    return role === 'OWNER' ? 'OWNER' : 'RENTER'
+  })
   const [cartCount, setCartCount] = useState(0)
   const [wishlistCount, setWishlistCount] = useState(0)
   const [shoppingRevision, setShoppingRevision] = useState(0)
@@ -25,6 +31,28 @@ export default function Header({
   const avatarButtonRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('lensrent.settings.workspace')
+    const workspace = role === 'OWNER' && (saved === 'OWNER' || saved === 'RENTER')
+      ? saved
+      : role === 'OWNER' ? 'OWNER' : 'RENTER'
+    setSelectedWorkspace(workspace)
+  }, [role])
+
+  useEffect(() => {
+    const syncWorkspace = (event) => {
+      const requested = event?.detail?.workspace || window.localStorage.getItem('lensrent.settings.workspace')
+      if (requested === 'OWNER' && role === 'OWNER') setSelectedWorkspace('OWNER')
+      else if (requested === 'RENTER') setSelectedWorkspace('RENTER')
+    }
+    window.addEventListener('lensrent-workspace-changed', syncWorkspace)
+    window.addEventListener('storage', syncWorkspace)
+    return () => {
+      window.removeEventListener('lensrent-workspace-changed', syncWorkspace)
+      window.removeEventListener('storage', syncWorkspace)
+    }
+  }, [role])
 
   useEffect(() => {
     const refreshShopping = () => setShoppingRevision((revision) => revision + 1)
@@ -92,16 +120,22 @@ export default function Header({
     navigate('/login')
   }
 
-  const role = auth?.user?.role?.toUpperCase() || 'RENTER'
+  const selectWorkspace = (workspace) => {
+    if (workspace === 'OWNER' && role !== 'OWNER') return
+    window.localStorage.setItem('lensrent.settings.workspace', workspace)
+    setSelectedWorkspace(workspace)
+    window.dispatchEvent(new CustomEvent('lensrent-workspace-changed', { detail: { workspace } }))
+  }
+
   const roleDashboards = role === 'ADMIN'
     ? [{ to: '/admin', label: 'Khu vực quản trị', description: 'Quản lý người dùng, thiết bị và đơn thuê' }]
     : role === 'OWNER'
       ? [
-          { to: '/owner', label: 'Khu vực chủ thiết bị', description: 'Quản lý thiết bị, đơn thuê và doanh thu' },
-          { to: '/renter', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' },
+          { to: '/owner', workspace: 'OWNER', label: 'Khu vực chủ thiết bị', description: 'Quản lý thiết bị, đơn thuê và doanh thu' },
+          { to: '/renter', workspace: 'RENTER', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' },
         ]
-      : [{ to: '/renter', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' }]
-  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : role === 'OWNER' ? 'Chủ thiết bị · Người thuê' : 'Người thuê'
+      : [{ to: '/renter', workspace: 'RENTER', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' }]
+  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : `${selectedWorkspace === 'OWNER' && role === 'OWNER' ? 'Owner' : 'Renter'} · Đang chọn`
 
   return (
     <header className="border-b border-gray-200 bg-white font-sans text-[#111827]">
@@ -187,18 +221,24 @@ export default function Header({
 
                 <div className="py-2">
                   <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Không gian làm việc</p>
-                  {roleDashboards.map((dashboard) => (
-                    <Link
-                      className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-orange-50 hover:text-[#e94b0a]"
+                  {roleDashboards.map((dashboard) => {
+                    const active = dashboard.workspace === selectedWorkspace
+                    return <Link
+                      className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-800 hover:bg-orange-50 hover:text-[#e94b0a]'}`}
                       key={dashboard.to}
-                      onClick={() => setAccountMenuOpen(false)}
+                      onClick={() => {
+                        if (dashboard.workspace) selectWorkspace(dashboard.workspace)
+                        setAccountMenuOpen(false)
+                      }}
                       role="menuitem"
                       to={dashboard.to}
                     >
                       <span>{dashboard.label}<span className="mt-0.5 block text-[11px] font-normal text-gray-500">{dashboard.description}</span></span>
-                      <span aria-hidden="true" className="text-gray-400">›</span>
+                      {active
+                        ? <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] font-bold text-[#e94b0a]">Đang chọn</span>
+                        : <span aria-hidden="true" className="shrink-0 text-gray-400">›</span>}
                     </Link>
-                  ))}
+                  })}
                 </div>
 
                 <div className="border-t border-gray-100 py-2">
@@ -222,7 +262,7 @@ export default function Header({
                     className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}
                     role="menuitem"
-                    to="/renter/profile"
+                    to="/account/settings"
                   >
                     Cài đặt tài khoản
                   </Link>

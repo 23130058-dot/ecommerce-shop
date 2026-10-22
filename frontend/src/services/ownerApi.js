@@ -35,6 +35,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 }
 
 export const getOwnerProducts = (options) => request('/products', options)
+export const getOwnerDashboard = (options) => request('/dashboard', options)
 export const createOwnerProduct = (payload) => request('/products', { method: 'POST', body: payload })
 export const updateOwnerProduct = (productId, payload) => request(`/products/${encodeURIComponent(productId)}`, { method: 'PUT', body: payload })
 export const getOwnerRevenue = ({ from, to, signal } = {}) => {
