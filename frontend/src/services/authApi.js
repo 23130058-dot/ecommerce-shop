@@ -15,6 +15,9 @@ async function sendAuthRequest(endpoint, payload) {
 
   const body = await response.json().catch(() => null)
   if (!response.ok) {
+    if (endpoint === 'login' && response.status === 401) {
+      throw new Error('Email hoặc mật khẩu không đúng.')
+    }
     throw new Error(body?.detail || body?.message || body?.error || 'Yêu cầu thất bại (' + response.status + ').')
   }
   return body

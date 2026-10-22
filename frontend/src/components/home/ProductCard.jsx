@@ -3,13 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import ratingStarIcon from '../../assets/lensrent/rating-star.svg'
 import { getStoredAuth } from '../../services/authApi.js'
 import { addToCompare, addToWishlist } from '../../services/shoppingApi.js'
+import { showToast } from '../../services/toast.js'
 import { resolveProductImage } from './productImageMap.js'
 
 export default function ProductCard({ product }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [busyAction, setBusyAction] = useState('')
-  const [actionMessage, setActionMessage] = useState('')
 
   const saveProduct = async (action) => {
     if (!getStoredAuth()) {
@@ -17,17 +17,16 @@ export default function ProductCard({ product }) {
       return
     }
     setBusyAction(action)
-    setActionMessage('')
     try {
       if (action === 'wishlist') {
         await addToWishlist(product.id)
-        setActionMessage('Đã lưu vào Wishlist.')
+        showToast('Đã lưu thiết bị vào danh sách yêu thích.', 'success')
       } else {
         await addToCompare(product.id)
-        setActionMessage('Đã thêm vào danh sách so sánh.')
+        showToast('Đã thêm thiết bị vào danh sách so sánh.', 'success')
       }
     } catch (error) {
-      setActionMessage(error.message)
+      showToast(error.message, 'error')
     } finally {
       setBusyAction('')
     }
@@ -68,7 +67,6 @@ export default function ProductCard({ product }) {
           <button className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(busyAction)} onClick={() => saveProduct('wishlist')} type="button">♡ Lưu</button>
           <button className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(busyAction)} onClick={() => saveProduct('compare')} type="button">⇄ So sánh</button>
         </div>
-        {actionMessage && <p aria-live="polite" className="mt-1.5 text-xs leading-4 text-gray-500">{actionMessage}</p>}
       </div>
     </article>
   )

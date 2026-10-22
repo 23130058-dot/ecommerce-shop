@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { loginUser, saveAuth } from '../services/authApi.js'
 import cameraBackground from '../assets/lensrent/hero-background.png'
 import Footer from '../components/layout/Footer.jsx'
+import { showToast } from '../services/toast.js'
 
 function EyeIcon({ visible }) {
   return (
@@ -58,16 +59,13 @@ export default function LoginPage() {
   const location = useLocation()
   const method = 'email'
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [notice, setNotice] = useState(null)
-
-const showUnavailableNotice = (event, message) => {
+  const showUnavailableNotice = (event, message) => {
     event.preventDefault()
-    setNotice({ type: 'error', message })
+    showToast(message, 'info')
   }
 
-const handleSubmit = async (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    setNotice(null)
     const formData = new FormData(event.currentTarget)
     try {
       const auth = await loginUser({
@@ -78,7 +76,7 @@ const handleSubmit = async (event) => {
       const requestedPath = location.state?.from?.pathname
       navigate(auth.user?.role?.toUpperCase() === 'ADMIN' ? '/admin' : requestedPath || '/', { replace: true })
     } catch (error) {
-      setNotice({ type: 'error', message: error.message })
+      showToast(error.message, 'error')
     }
   }
 
@@ -221,7 +219,6 @@ const handleSubmit = async (event) => {
                   Đăng nhập
                   <span aria-hidden="true" className="text-base leading-none">→</span>
                 </button>
-                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-red-600">{notice.message}</p>}
               </form>
 
               <div className="relative mt-6 flex h-6 items-center justify-center">

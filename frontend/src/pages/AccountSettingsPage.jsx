@@ -5,6 +5,7 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { changeAccountPassword, getAccountProfile, updateAccountProfile, uploadAccountAvatar } from '../services/accountApi.js'
 import { API_BASE_URL, getStoredAuth, updateStoredUser } from '../services/authApi.js'
+import { getWorkspacePreference, saveWorkspacePreference } from '../services/workspacePreference.js'
 
 const settingsTabs = [
   { key: 'profile', path: '/account/settings', label: 'Hồ sơ cá nhân', icon: 'user' },
@@ -423,28 +424,25 @@ function NotificationRow({ title, description, checked, onChange }) {
 export default function AccountSettingsPage() {
   const location = useLocation()
   const auth = getStoredAuth()
-  const accountRole = auth?.user?.role?.toUpperCase() || 'RENTER'
+  const accountRole = auth?.user?.role?.toUpperCase() || 'USER'
   const [toast, setToast] = useState('')
   const [toastTimer, setToastTimer] = useState(null)
   const [profile, setProfile] = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState('')
-  const [selectedWorkspace, setSelectedWorkspace] = useState(() => {
-    const saved = window.localStorage.getItem('lensrent.settings.workspace')
-    if (saved === 'OWNER' || saved === 'RENTER') return saved
-    return getStoredAuth()?.user?.role?.toUpperCase() === 'OWNER' ? 'OWNER' : 'RENTER'
-  })
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => getWorkspacePreference(auth?.user))
   const tabKey = location.pathname.split('/')[3] || 'profile'
   const activeTab = settingsTabs.find((tab) => tab.key === tabKey) || settingsTabs[0]
-  const ownerWorkspaceAvailable = accountRole === 'OWNER'
-  const renterWorkspaceAvailable = accountRole === 'OWNER' || accountRole === 'RENTER'
-  const selectedWorkspaceAvailable = selectedWorkspace === 'OWNER' ? ownerWorkspaceAvailable : renterWorkspaceAvailable
-  const selectedWorkspacePath = selectedWorkspace === 'OWNER' ? '/owner' : '/renter'
+  const isAdmin = accountRole === 'ADMIN'
+  const ownerWorkspaceAvailable = !isAdmin
+  const renterWorkspaceAvailable = !isAdmin
+  const selectedWorkspaceAvailable = Boolean(selectedWorkspace) && !isAdmin
+  const selectedWorkspacePath = selectedWorkspace === 'OWNER' ? '/owner' : selectedWorkspace === 'RENTER' ? '/renter' : '/'
 
   const selectWorkspace = (workspace) => {
+    if (isAdmin) return
     setSelectedWorkspace(workspace)
-    window.localStorage.setItem('lensrent.settings.workspace', workspace)
-    window.dispatchEvent(new CustomEvent('lensrent-workspace-changed', { detail: { workspace } }))
+    saveWorkspacePreference(auth?.user, workspace)
   }
 
   useEffect(() => {
@@ -498,32 +496,32 @@ export default function AccountSettingsPage() {
           <div className="mb-3 flex items-center gap-2 text-xs text-slate-500"><Link className="hover:text-orange-600" to="/">Trang chủ</Link><span>/</span><span className="font-medium text-slate-700">Cài đặt tài khoản</span></div>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-600">Thiết lập tài khoản</p><h1 className="mt-1.5 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-[30px]">Cài đặt tài khoản</h1><p className="mt-2 text-sm text-slate-500">Quản lý thông tin cá nhân, bảo mật và phương thức thanh toán.</p></div>
-            <Link className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-200 hover:text-orange-600" to={selectedWorkspaceAvailable ? selectedWorkspacePath : '/'}><Icon name="arrow" size={16} className="rotate-180" /> {selectedWorkspaceAvailable ? `Mở không gian ${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'}` : 'Về trang chủ'}</Link>
+            <Link className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-200 hover:text-orange-600" to={isAdmin ? '/admin' : selectedWorkspaceAvailable ? selectedWorkspacePath : '#workspace-selector'}><Icon name="arrow" size={16} className="rotate-180" /> {isAdmin ? 'Mở khu vực Admin' : selectedWorkspaceAvailable ? `Mở không gian ${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'}` : 'Chọn workspace'}</Link>
           </div>
         </div>
 
         <div className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)] xl:gap-6">
           <aside className="space-y-4 lg:sticky lg:top-5">
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <section id="workspace-selector" className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
                 <img alt="" className="size-12 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm" src={avatarSource(profile?.avatarUrl)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-slate-900">{profile?.fullName || auth?.user?.fullName || 'Tài khoản LensRent'}</p>
-                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Không gian đang chọn</p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Vai trò tài khoản</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs font-semibold text-slate-700">{selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'}</span>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${selectedWorkspaceAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                      <span className={`size-1.5 rounded-full ${selectedWorkspaceAvailable ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                      {selectedWorkspaceAvailable ? 'Đang hoạt động' : 'Chưa kích hoạt'}
+                    <span className="text-xs font-semibold text-slate-700">{isAdmin ? 'Admin' : 'User'}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isAdmin ? 'bg-orange-50 text-orange-700' : selectedWorkspace ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                      <span className={`size-1.5 rounded-full ${isAdmin ? 'bg-orange-500' : selectedWorkspace ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                      {isAdmin ? 'Quản trị viên' : selectedWorkspace ? `${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'} đang chọn` : 'Chưa chọn workspace'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5">
+              {!isAdmin ? <div className="mt-5">
                 <div className="flex items-center justify-between gap-2 px-1">
                   <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-slate-400">Chọn không gian</p>
-                  <span className="text-[10px] text-slate-400">Nhấn để chuyển</span>
+                  <span className="text-[10px] text-slate-400">Chọn một workspace</span>
                 </div>
                 <div className="mt-2.5 grid grid-cols-2 gap-2">
                   {['OWNER', 'RENTER'].map((workspace) => {
@@ -536,16 +534,16 @@ export default function AccountSettingsPage() {
                       </span>
                       <span className="mt-2 block text-xs font-bold text-slate-800">{workspace === 'OWNER' ? 'Owner' : 'Renter'}</span>
                       <span className={`mt-0.5 block text-[10px] font-semibold ${active ? (available ? 'text-emerald-700' : 'text-slate-500') : (available ? 'text-slate-400' : 'text-slate-400')}`}>
-                        {active ? (available ? 'Đang chọn · Hoạt động' : 'Đang chọn · Chưa kích hoạt') : (available ? 'Sẵn sàng chuyển' : 'Chưa kích hoạt')}
+                        {active ? 'Đang chọn' : 'Nhấn để chọn'}
                       </span>
                     </button>
                   })}
                 </div>
-                <p className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-[11px] leading-5 text-slate-600">{selectedWorkspace === 'OWNER' ? (ownerWorkspaceAvailable ? 'Quản lý thiết bị cho thuê, đơn hàng và doanh thu của bạn.' : 'Tài khoản hiện chưa được cấp quyền Owner.') : (renterWorkspaceAvailable ? 'Tìm thiết bị, quản lý giỏ hàng và theo dõi đơn thuê.' : 'Tài khoản hiện chưa có không gian Renter.')}</p>
+                <p className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-[11px] leading-5 text-slate-600">{selectedWorkspace === 'OWNER' ? 'Quản lý thiết bị cho thuê, đơn hàng và doanh thu của bạn.' : selectedWorkspace === 'RENTER' ? 'Tìm thiết bị, quản lý giỏ hàng và theo dõi đơn thuê.' : 'Chọn Owner để quản lý thiết bị cho thuê hoặc Renter để tìm và thuê thiết bị.'}</p>
                 {selectedWorkspaceAvailable
                   ? <Link className="mt-3 flex min-h-10 items-center justify-center rounded-lg bg-orange-500 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-orange-600" to={selectedWorkspacePath}>Mở không gian {selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'} <span aria-hidden="true" className="ml-1">→</span></Link>
-                  : <span className="mt-3 block text-center text-[11px] text-slate-400">Liên hệ quản trị viên để kích hoạt quyền này.</span>}
-              </div>
+                  : <span className="mt-3 block text-center text-[11px] text-slate-400">Chọn Owner hoặc Renter để mở workspace đã chọn.</span>}
+              </div> : <div className="mt-4 rounded-xl bg-orange-50 px-3 py-3 text-xs leading-5 text-orange-800">Tài khoản Admin quản lý hệ thống tại khu vực quản trị.</div>}
             </section>
           </aside>
 

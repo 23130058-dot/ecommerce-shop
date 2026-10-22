@@ -5,6 +5,7 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, clearWishlist, getWishlist, removeFromWishlist } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 const categories = [
   { id: 'all', label: 'Tất cả' },
@@ -35,7 +36,6 @@ export default function WishlistPage() {
   const [sort, setSort] = useState('recent')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [busyId, setBusyId] = useState(null)
 
   useEffect(() => {
@@ -61,12 +61,12 @@ export default function WishlistPage() {
 
   const removeItem = async (productId) => {
     setBusyId(productId)
-    setNotice('')
     try {
       await removeFromWishlist(productId)
       setItems((current) => current.filter((item) => item.productId !== productId))
+      showToast('Đã bỏ thiết bị khỏi danh sách yêu thích.', 'success')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -75,12 +75,12 @@ export default function WishlistPage() {
   const removeAll = async () => {
     if (!items.length) return
     setBusyId('all')
-    setNotice('')
     try {
       await clearWishlist()
       setItems([])
+      showToast('Đã xóa danh sách yêu thích.', 'success')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -88,12 +88,12 @@ export default function WishlistPage() {
 
   const rentNow = async (item) => {
     setBusyId(item.productId)
-    setNotice('')
     try {
       await addToCart(item.productId, { ...rentalDates(), quantity: 1 })
+      showToast('Đã thêm thiết bị vào giỏ hàng. LensRent giữ chỗ trong 10 phút.', 'success')
       navigate('/cart')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
       setBusyId(null)
     }
   }
@@ -125,7 +125,6 @@ export default function WishlistPage() {
           </label>
         </div>
 
-        {notice && <p aria-live="polite" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{notice}</p>}
         {loading ? (
           <div className="mt-6 rounded-xl border border-gray-200 bg-white py-16 text-center text-sm text-gray-500">Đang tải thiết bị đã lưu…</div>
         ) : error ? (

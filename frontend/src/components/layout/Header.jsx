@@ -9,6 +9,7 @@ import chevronDownIcon from '../../assets/lensrent/chevron-down.svg'
 import searchIcon from '../../assets/lensrent/search.svg'
 import wishlistIcon from '../../assets/lensrent/wishlist.svg'
 import { getCart, getWishlist } from '../../services/shoppingApi.js'
+import { getWorkspacePreference, getWorkspacePreferenceKey, saveWorkspacePreference } from '../../services/workspacePreference.js'
 import AccountAvatar from './AccountAvatar.jsx'
 
 export default function Header({
@@ -18,12 +19,8 @@ export default function Header({
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const { auth, setAuth } = useCurrentAccount()
-  const role = auth?.user?.role?.toUpperCase() || 'RENTER'
-  const [selectedWorkspace, setSelectedWorkspace] = useState(() => {
-    const saved = window.localStorage.getItem('lensrent.settings.workspace')
-    if (role === 'OWNER' && (saved === 'OWNER' || saved === 'RENTER')) return saved
-    return role === 'OWNER' ? 'OWNER' : 'RENTER'
-  })
+  const role = auth?.user?.role?.toUpperCase() || 'USER'
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => getWorkspacePreference(auth?.user))
   const [cartCount, setCartCount] = useState(0)
   const [wishlistCount, setWishlistCount] = useState(0)
   const [shoppingRevision, setShoppingRevision] = useState(0)
@@ -33,18 +30,15 @@ export default function Header({
   const location = useLocation()
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('lensrent.settings.workspace')
-    const workspace = role === 'OWNER' && (saved === 'OWNER' || saved === 'RENTER')
-      ? saved
-      : role === 'OWNER' ? 'OWNER' : 'RENTER'
-    setSelectedWorkspace(workspace)
-  }, [role])
+    setSelectedWorkspace(getWorkspacePreference(auth?.user))
+  }, [auth?.user?.id, auth?.user?.email])
 
   useEffect(() => {
     const syncWorkspace = (event) => {
-      const requested = event?.detail?.workspace || window.localStorage.getItem('lensrent.settings.workspace')
-      if (requested === 'OWNER' && role === 'OWNER') setSelectedWorkspace('OWNER')
-      else if (requested === 'RENTER') setSelectedWorkspace('RENTER')
+      const key = getWorkspacePreferenceKey(auth?.user)
+      if (event.type === 'storage' && event.key !== key) return
+      if (event.detail?.key && event.detail.key !== key) return
+      setSelectedWorkspace(getWorkspacePreference(auth?.user))
     }
     window.addEventListener('lensrent-workspace-changed', syncWorkspace)
     window.addEventListener('storage', syncWorkspace)
@@ -52,7 +46,7 @@ export default function Header({
       window.removeEventListener('lensrent-workspace-changed', syncWorkspace)
       window.removeEventListener('storage', syncWorkspace)
     }
-  }, [role])
+  }, [auth?.user?.id, auth?.user?.email])
 
   useEffect(() => {
     const refreshShopping = () => setShoppingRevision((revision) => revision + 1)
@@ -121,21 +115,23 @@ export default function Header({
   }
 
   const selectWorkspace = (workspace) => {
-    if (workspace === 'OWNER' && role !== 'OWNER') return
-    window.localStorage.setItem('lensrent.settings.workspace', workspace)
+    if (role === 'ADMIN') return
+    saveWorkspacePreference(auth?.user, workspace)
     setSelectedWorkspace(workspace)
-    window.dispatchEvent(new CustomEvent('lensrent-workspace-changed', { detail: { workspace } }))
   }
 
   const roleDashboards = role === 'ADMIN'
     ? [{ to: '/admin', label: 'Khu vực quản trị', description: 'Quản lý người dùng, thiết bị và đơn thuê' }]
-    : role === 'OWNER'
-      ? [
-          { to: '/owner', workspace: 'OWNER', label: 'Khu vực chủ thiết bị', description: 'Quản lý thiết bị, đơn thuê và doanh thu' },
-          { to: '/renter', workspace: 'RENTER', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' },
-        ]
-      : [{ to: '/renter', workspace: 'RENTER', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' }]
-  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : `${selectedWorkspace === 'OWNER' && role === 'OWNER' ? 'Owner' : 'Renter'} · Đang chọn`
+    : selectedWorkspace === 'OWNER'
+      ? [{ to: '/owner', workspace: 'OWNER', label: 'Khu vực chủ thiết bị', description: 'Quản lý thiết bị, đơn thuê và doanh thu' }]
+      : selectedWorkspace === 'RENTER'
+        ? [{ to: '/renter', workspace: 'RENTER', label: 'Khu vực người thuê', description: 'Tìm thiết bị, xem giỏ hàng và đơn thuê' }]
+        : []
+  const roleLabel = role === 'ADMIN'
+    ? 'Quản trị viên'
+    : selectedWorkspace
+      ? `User · ${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'} đang chọn`
+      : 'User · Chưa chọn workspace'
 
   return (
     <header className="border-b border-gray-200 bg-white font-sans text-[#111827]">
@@ -221,7 +217,7 @@ export default function Header({
 
                 <div className="py-2">
                   <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Không gian làm việc</p>
-                  {roleDashboards.map((dashboard) => {
+                  {roleDashboards.length ? roleDashboards.map((dashboard) => {
                     const active = dashboard.workspace === selectedWorkspace
                     return <Link
                       className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-800 hover:bg-orange-50 hover:text-[#e94b0a]'}`}
@@ -238,7 +234,10 @@ export default function Header({
                         ? <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] font-bold text-[#e94b0a]">Đang chọn</span>
                         : <span aria-hidden="true" className="shrink-0 text-gray-400">›</span>}
                     </Link>
-                  })}
+                  }) : <div className="px-3 py-2">
+                    <p className="text-xs leading-5 text-gray-500">Chọn Owner hoặc Renter trong cài đặt tài khoản để mở workspace.</p>
+                    <Link className="mt-2 inline-flex text-xs font-bold text-[#e94b0a] hover:underline" onClick={() => setAccountMenuOpen(false)} role="menuitem" to="/account/settings">Chọn workspace →</Link>
+                  </div>}
                 </div>
 
                 <div className="border-t border-gray-100 py-2">

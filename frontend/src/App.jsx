@@ -17,6 +17,7 @@ import CartPage from './pages/CartPage.jsx'
 import CheckoutPage from './pages/CheckoutPage.jsx'
 import OrderConfirmationPage from './pages/OrderConfirmationPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
+import ToastViewport from './components/layout/ToastViewport.jsx'
 
 function AdminOnly({ children }) {
   const location = useLocation()
@@ -40,6 +41,7 @@ function LegacyAccountSettingsRoute() {
 function App() {
   return (
     <BrowserRouter>
+      <ToastViewport />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products/:productId" element={<ProductDetailPage />} />

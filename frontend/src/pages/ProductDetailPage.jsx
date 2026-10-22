@@ -6,6 +6,7 @@ import Header from '../components/layout/Header.jsx'
 import { getCatalogProduct, getCatalogProducts } from '../services/productApi.js'
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, addToCompare, addToWishlist } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 const categoryRoutes = {
   camera: 'may-anh',
@@ -99,7 +100,6 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0)
   const [openPolicies, setOpenPolicies] = useState({})
   const [shoppingBusy, setShoppingBusy] = useState('')
-  const [shoppingNotice, setShoppingNotice] = useState('')
   const [isSignedIn, setIsSignedIn] = useState(() => Boolean(getStoredAuth()))
   const [startDate, setStartDate] = useState(() => addDays(localDateString(new Date()), 1))
   const [endDate, setEndDate] = useState(() => addDays(localDateString(new Date()), 3))
@@ -167,17 +167,16 @@ export default function ProductDetailPage() {
   const saveToList = async (list) => {
     if (!ensureSignedIn()) return
     setShoppingBusy(list)
-    setShoppingNotice('')
     try {
       if (list === 'wishlist') {
         await addToWishlist(product.id)
-        setShoppingNotice('Đã lưu thiết bị vào Wishlist.')
+        showToast('Đã lưu thiết bị vào danh sách yêu thích.', 'success')
       } else {
         await addToCompare(product.id)
-        setShoppingNotice('Đã thêm thiết bị vào danh sách so sánh.')
+        showToast('Đã thêm thiết bị vào danh sách so sánh.', 'success')
       }
     } catch (error) {
-      setShoppingNotice(error.message)
+      showToast(error.message, 'error')
     } finally {
       setShoppingBusy('')
     }
@@ -186,12 +185,12 @@ export default function ProductDetailPage() {
   const rentFromCart = async () => {
     if (!ensureSignedIn()) return
     setShoppingBusy('cart')
-    setShoppingNotice('')
     try {
       await addToCart(product.id, { quantity: 1, startDate, endDate })
+      showToast('Đã thêm thiết bị vào giỏ hàng. LensRent giữ chỗ trong 10 phút.', 'success')
       navigate('/cart')
     } catch (error) {
-      setShoppingNotice(error.message)
+      showToast(error.message, 'error')
       setShoppingBusy('')
     }
   }
@@ -331,8 +330,6 @@ export default function ProductDetailPage() {
                     <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('wishlist')} type="button">♡ Thêm vào Wishlist</button>
                     <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('compare')} type="button">⇄ So sánh</button>
                   </div>
-                  {shoppingNotice && <p aria-live="polite" className="mt-2 rounded-md bg-orange-50 px-3 py-2 text-sm text-[#9a3412]">{shoppingNotice}</p>}
-
                   {product.availableQuantity > 0 ? (
                     <button className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-base font-bold text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500] disabled:opacity-60" disabled={shoppingBusy === 'cart'} onClick={rentFromCart} type="button">
                       <span aria-hidden="true">↗</span> {shoppingBusy === 'cart' ? 'ĐANG THÊM VÀO GIỎ…' : 'THUÊ NGAY'}

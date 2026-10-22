@@ -10,8 +10,8 @@ function StatusBadge({ status }) {
 
 function RoleBadge({ role }) {
   const normalized = role?.toUpperCase()
-  const label = normalized === 'OWNER' ? 'Owner' : normalized === 'ADMIN' ? 'Admin' : 'Renter'
-  const tone = normalized === 'OWNER' ? 'bg-violet-50 text-violet-700' : normalized === 'ADMIN' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'
+  const label = normalized === 'ADMIN' ? 'Admin' : 'User'
+  const tone = normalized === 'ADMIN' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'
   return <span className={`rounded-md px-2 py-1 text-[10px] font-medium ${tone}`}>{label}</span>
 }
 
@@ -23,7 +23,7 @@ function mapUser(user) {
     name: user.fullName || 'Chưa cập nhật tên',
     email: user.email,
     phone: user.phone || '—',
-    role: user.role || 'RENTER',
+    role: user.role || 'USER',
     joined: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleDateString('vi-VN') : '—',
     rentals: Number(user.rentalCount) || 0,
     status: user.status?.toUpperCase() === 'ACTIVE' ? 'active' : 'locked',
@@ -31,7 +31,7 @@ function mapUser(user) {
 }
 
 function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
-  const [role, setRole] = useState(user?.role || 'RENTER')
+  const [role, setRole] = useState(user?.role || 'USER')
   if (!user) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -44,7 +44,7 @@ function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
           <dt className="text-gray-500">Mã người dùng</dt><dd className="font-semibold text-gray-800">{user.code}</dd>
           <dt className="text-gray-500">Email</dt><dd className="break-all font-medium text-gray-800">{user.email}</dd>
           <dt className="text-gray-500">Số điện thoại</dt><dd className="font-medium text-gray-800">{user.phone}</dd>
-          <dt className="text-gray-500">Vai trò</dt><dd className="flex flex-wrap items-center gap-2"><RoleBadge role={user.role} /><select aria-label="Vai trò mới" value={role.toUpperCase()} onChange={(event) => setRole(event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-orange-400"><option value="RENTER">Renter</option><option value="OWNER">Owner</option><option value="ADMIN">Admin</option></select><button type="button" disabled={savingRole || role.toUpperCase() === user.role.toUpperCase()} onClick={async () => { const updated = await onRoleChange(user, role); if (updated) setRole(updated.role) }} className="rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50">{savingRole ? 'Đang lưu…' : 'Lưu vai trò'}</button></dd>
+          <dt className="text-gray-500">Vai trò</dt><dd className="flex flex-wrap items-center gap-2"><RoleBadge role={user.role} /><select aria-label="Vai trò mới" value={role.toUpperCase()} onChange={(event) => setRole(event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-orange-400"><option value="USER">User</option><option value="ADMIN">Admin</option></select><button type="button" disabled={savingRole || role.toUpperCase() === user.role.toUpperCase()} onClick={async () => { const updated = await onRoleChange(user, role); if (updated) setRole(updated.role) }} className="rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50">{savingRole ? 'Đang lưu…' : 'Lưu vai trò'}</button></dd>
           <dt className="text-gray-500">Ngày tham gia</dt><dd className="font-medium text-gray-800">{user.joined}</dd>
           <dt className="text-gray-500">Đơn thuê</dt><dd className="font-medium text-gray-800">{user.rentals}</dd>
           <dt className="text-gray-500">Trạng thái</dt><dd><StatusBadge status={user.status} /></dd>
@@ -193,7 +193,7 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Lọc theo trạng thái">
               {[['all', 'Tất cả'], ['active', 'Hoạt động'], ['locked', 'Đã khóa']].map(([value, label]) => <button key={value} onClick={() => changeFilter(setStatusFilter, value)} type="button" aria-pressed={statusFilter === value} className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold ${statusFilter === value ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-500 hover:bg-gray-50'}`}>{label}</button>)}
             </div>
-            <label className="flex items-center gap-2 text-[10px] text-gray-500"><AdminIcon name="filter" className="size-3.5" /><span>Vai trò</span><select value={roleFilter} onChange={(event) => changeFilter(setRoleFilter, event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-700 outline-none focus:border-orange-400"><option value="all">Tất cả</option><option value="renter">Renter</option><option value="owner">Owner</option><option value="admin">Admin</option></select></label>
+            <label className="flex items-center gap-2 text-[10px] text-gray-500"><AdminIcon name="filter" className="size-3.5" /><span>Vai trò</span><select value={roleFilter} onChange={(event) => changeFilter(setRoleFilter, event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-700 outline-none focus:border-orange-400"><option value="all">Tất cả</option><option value="user">User</option><option value="admin">Admin</option></select></label>
           </div>
           <DataTable columns={columns} rows={visibleUsers} rowKey={(user) => user.id} loading={loading} error={error} emptyMessage="Không tìm thấy tài khoản phù hợp." page={page - 1} pageCount={pageCount} totalElements={totalElements} size={pageSize} onPageChange={(nextPage) => setPage(nextPage + 1)} />
         </section>

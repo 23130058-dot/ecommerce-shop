@@ -22,11 +22,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   if (!response.ok) {
     const serverMessage = result?.detail || result?.message || result?.error
     if (response.status === 403) {
-      const role = auth?.user?.role?.toUpperCase()
-      const message = role === 'OWNER'
-        ? 'Phiên đăng nhập chưa nhận quyền Chủ thiết bị. Nếu vai trò Owner vừa được cấp, hãy đăng xuất rồi đăng nhập lại để làm mới quyền.'
-        : 'Tài khoản hiện tại chưa có quyền Chủ thiết bị. Hãy đăng nhập bằng tài khoản Owner hoặc nhờ quản trị viên cấp quyền rồi đăng nhập lại.'
-      throw new Error(message)
+      throw new Error('Tài khoản hiện tại chưa được phép sử dụng workspace Owner. Hãy đăng nhập lại sau khi cập nhật ứng dụng hoặc liên hệ quản trị viên.')
     }
     if (response.status === 401) throw new Error(serverMessage || 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
     throw new Error(serverMessage || `Yêu cầu thất bại (${response.status}).`)

@@ -531,7 +531,7 @@ public class AdminService {
     private String normalizeRole(String role) {
         if (role == null || role.isBlank() || "ALL".equalsIgnoreCase(role)) return null;
         String normalized = role.trim().toUpperCase(Locale.ROOT);
-        if (!List.of("ADMIN", "OWNER", "RENTER").contains(normalized)) {
+        if (!List.of("ADMIN", "USER").contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
         }
         return normalized;

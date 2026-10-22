@@ -41,8 +41,8 @@ public final class AdminDtos {
 
     public record UpdateUserRoleRequest(
             @NotNull
-            @Pattern(regexp = "ADMIN|OWNER|RENTER", flags = Pattern.Flag.CASE_INSENSITIVE,
-                    message = "Vai trò chỉ được là ADMIN, OWNER hoặc RENTER")
+            @Pattern(regexp = "ADMIN|USER", flags = Pattern.Flag.CASE_INSENSITIVE,
+                    message = "Vai trò chỉ được là ADMIN hoặc USER")
             String role
     ) {
     }

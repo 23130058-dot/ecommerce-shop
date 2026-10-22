@@ -49,7 +49,7 @@ public class User {
         this.email = email;
         this.passwordHash = passwordHash;
         this.phone = phone;
-        this.role = "RENTER";
+        this.role = "USER";
         this.status = "ACTIVE";
         this.createdAt = LocalDateTime.now();
     }
