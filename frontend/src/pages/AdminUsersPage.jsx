@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import AdminLayout, { AdminIcon } from '../components/admin/AdminLayout.jsx'
-import { getAdminUsers, updateAdminUserStatus } from '../services/adminApi.js'
+import { getAdminUsers, updateAdminUserRole, updateAdminUserStatus } from '../services/adminApi.js'
 
 function StatusBadge({ status }) {
   const active = status === 'active'
@@ -29,7 +29,8 @@ function mapUser(user) {
   }
 }
 
-function DetailModal({ user, onClose }) {
+function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
+  const [role, setRole] = useState(user?.role || 'RENTER')
   if (!user) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -42,11 +43,13 @@ function DetailModal({ user, onClose }) {
           <dt className="text-gray-500">Mã người dùng</dt><dd className="font-semibold text-gray-800">{user.code}</dd>
           <dt className="text-gray-500">Email</dt><dd className="break-all font-medium text-gray-800">{user.email}</dd>
           <dt className="text-gray-500">Số điện thoại</dt><dd className="font-medium text-gray-800">{user.phone}</dd>
-          <dt className="text-gray-500">Vai trò</dt><dd><RoleBadge role={user.role} /></dd>
+          <dt className="text-gray-500">Vai trò</dt><dd className="flex flex-wrap items-center gap-2"><RoleBadge role={user.role} /><select aria-label="Vai trò mới" value={role.toUpperCase()} onChange={(event) => setRole(event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-orange-400"><option value="RENTER">Renter</option><option value="OWNER">Owner</option><option value="ADMIN">Admin</option></select><button type="button" disabled={savingRole || role.toUpperCase() === user.role.toUpperCase()} onClick={async () => { const updated = await onRoleChange(user, role); if (updated) setRole(updated.role) }} className="rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50">{savingRole ? 'Đang lưu…' : 'Lưu vai trò'}</button></dd>
           <dt className="text-gray-500">Ngày tham gia</dt><dd className="font-medium text-gray-800">{user.joined}</dd>
           <dt className="text-gray-500">Đơn thuê</dt><dd className="font-medium text-gray-800">{user.rentals}</dd>
           <dt className="text-gray-500">Trạng thái</dt><dd><StatusBadge status={user.status} /></dd>
         </dl>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Vai trò mới có hiệu lực sau khi người dùng đăng nhập lại. Không thể tự đổi quyền tài khoản Admin đang sử dụng.</p>
+        {roleError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{roleError}</p>}
         <div className="mt-5 flex justify-end"><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Đóng</button></div>
       </section>
     </div>
@@ -76,6 +79,8 @@ export default function AdminUsersPage() {
   const [pageCount, setPageCount] = useState(1)
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
+  const [savingRole, setSavingRole] = useState(false)
+  const [roleError, setRoleError] = useState('')
   const [error, setError] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
   const pageSize = 10
@@ -132,6 +137,25 @@ export default function AdminUsersPage() {
     }
   }
 
+  const changeRole = async (user, role) => {
+    setSavingRole(true)
+    setRoleError('')
+    setError('')
+    try {
+      const response = await updateAdminUserRole(user.id, role)
+      const updatedUser = mapUser(response)
+      setSelectedUser(updatedUser)
+      setUsers((current) => current.map((item) => item.id === user.id ? updatedUser : item))
+      setRefreshVersion((current) => current + 1)
+      return updatedUser
+    } catch (requestError) {
+      setRoleError(requestError.message)
+      return null
+    } finally {
+      setSavingRole(false)
+    }
+  }
+
   const visibleUsers = users
 
   return (
@@ -180,7 +204,7 @@ export default function AdminUsersPage() {
         </section>
         <p className="mb-1 mt-4 text-center text-[10px] text-gray-400">Dữ liệu người dùng và thao tác trạng thái được lấy từ PostgreSQL.</p>
       </main>
-      <DetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />
+      <DetailModal key={selectedUser?.id || 'closed'} user={selectedUser} savingRole={savingRole} roleError={roleError} onRoleChange={changeRole} onClose={() => setSelectedUser(null)} />
     </AdminLayout>
   )
 }

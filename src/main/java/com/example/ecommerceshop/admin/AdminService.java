@@ -3,15 +3,17 @@ package com.example.ecommerceshop.admin;
 import com.example.ecommerceshop.admin.AdminDtos.CategoryRevenue;
 import com.example.ecommerceshop.admin.AdminDtos.DashboardResponse;
 import com.example.ecommerceshop.admin.AdminDtos.MonthlyRevenue;
+import com.example.ecommerceshop.admin.AdminDtos.PageResponse;
+import com.example.ecommerceshop.admin.AdminDtos.ProductAdminResponse;
 import com.example.ecommerceshop.admin.AdminDtos.RecentActivity;
+import com.example.ecommerceshop.admin.AdminDtos.RentalAdminDetail;
+import com.example.ecommerceshop.admin.AdminDtos.RentalAdminResponse;
+import com.example.ecommerceshop.admin.AdminDtos.RentalLineAdmin;
 import com.example.ecommerceshop.admin.AdminDtos.UserPageResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserSummary;
 import com.example.ecommerceshop.user.User;
 import com.example.ecommerceshop.user.UserRepository;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +23,8 @@ import org.springframework.http.HttpStatus;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 @Service
 public class AdminService {
@@ -67,21 +67,49 @@ public class AdminService {
     @Transactional(readOnly = true)
     public UserPageResponse getUsers(String search, String role, String status, int page, int size) {
         String normalizedSearch = search == null ? "" : search.trim();
-        String searchPattern = normalizedSearch.isEmpty()
-                ? "%%"
-                : "%" + normalizedSearch.toLowerCase(Locale.ROOT) + "%";
         Long idSearch = parseIdSearch(normalizedSearch);
         String normalizedRole = normalizeRole(role);
         String normalizedStatus = normalizeStatusFilter(status);
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        Page<User> users = userRepository.searchUsers(searchPattern, idSearch, normalizedRole, normalizedStatus,
-                PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt")));
-
-        Map<Long, Long> rentalCounts = getRentalCounts(users.getContent());
-        List<UserResponse> results = users.getContent().stream()
-                .map(user -> toUserResponse(user, rentalCounts.getOrDefault(user.getId(), 0L)))
-                .toList();
+        StringBuilder where = new StringBuilder(" WHERE TRUE");
+        List<Object> args = new ArrayList<>();
+        if (!normalizedSearch.isBlank()) {
+            where.append(" AND (LOWER(CONCAT_WS(' ', COALESCE(u.full_name, ''), COALESCE(u.email, ''))) LIKE ? " +
+                    "OR CAST(u.id AS varchar) LIKE ?");
+            String pattern = "%" + normalizedSearch.toLowerCase(Locale.ROOT) + "%";
+            args.add(pattern);
+            args.add("%" + normalizedSearch.replaceFirst("(?i)^USR-", "") + "%");
+            if (idSearch != null) {
+                where.append(" OR u.id = ?");
+                args.add(idSearch);
+            }
+            where.append(")");
+        }
+        if (normalizedRole != null) {
+            where.append(" AND UPPER(COALESCE(u.role, '')) = ?");
+            args.add(normalizedRole);
+        }
+        if (normalizedStatus != null) {
+            where.append(" AND UPPER(COALESCE(u.status, '')) = ?");
+            args.add(normalizedStatus);
+        }
+        Long filteredCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users u" + where, Long.class, args.toArray());
+        List<Object> queryArgs = new ArrayList<>(args);
+        queryArgs.add(safeSize);
+        queryArgs.add((long) safePage * safeSize);
+        List<UserResponse> results = jdbcTemplate.query("""
+                SELECT u.id, u.full_name, u.email, u.phone, u.role, u.status, u.created_at,
+                       (SELECT COUNT(*) FROM rentals r WHERE r.renter_id = u.id) AS rental_count
+                FROM users u
+                """ + where + " ORDER BY u.created_at DESC NULLS LAST, u.id DESC LIMIT ? OFFSET ?",
+                (rs, rowNum) -> {
+                    Timestamp createdAt = rs.getTimestamp("created_at");
+                    String userStatus = "ACTIVE".equalsIgnoreCase(rs.getString("status")) ? "ACTIVE" : "LOCKED";
+                    return new UserResponse(rs.getLong("id"), rs.getString("full_name"), rs.getString("email"),
+                            rs.getString("phone"), rs.getString("role"), userStatus,
+                            createdAt == null ? null : createdAt.toLocalDateTime(), rs.getLong("rental_count"));
+                }, queryArgs.toArray());
         long totalUsers = scalarLong("SELECT COUNT(*) FROM users");
         long activeUsers = scalarLong("SELECT COUNT(*) FROM users WHERE UPPER(COALESCE(status, '')) = 'ACTIVE'");
         long newUsers = scalarLong("""
@@ -90,8 +118,9 @@ public class AdminService {
                   AND created_at < date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month'
                 """);
         UserSummary summary = new UserSummary(totalUsers, activeUsers, Math.max(0, totalUsers - activeUsers), newUsers);
-        return new UserPageResponse(results, users.getNumber(), users.getSize(),
-                users.getTotalElements(), users.getTotalPages(), summary);
+        long totalElements = filteredCount == null ? 0 : filteredCount;
+        return new UserPageResponse(results, safePage, safeSize, totalElements,
+                (int) Math.ceil((double) totalElements / safeSize), summary);
     }
 
     @Transactional
@@ -112,6 +141,230 @@ public class AdminService {
         user.setStatus(status);
         User saved = userRepository.save(user);
         return toUserResponse(saved, countRentals(saved.getId()));
+    }
+
+    @Transactional
+    public UserResponse updateUserRole(long userId, String requestedRole, String currentAdminEmail) {
+        String role = normalizeRole(requestedRole);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        if (user.getEmail().equalsIgnoreCase(currentAdminEmail) && !role.equalsIgnoreCase(user.getRole())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bạn không thể đổi vai trò tài khoản quản trị đang đăng nhập.");
+        }
+        if ("ADMIN".equalsIgnoreCase(user.getRole()) && !"ADMIN".equals(role)
+                && "ACTIVE".equalsIgnoreCase(user.getStatus())
+                && userRepository.countByRoleIgnoreCaseAndStatusIgnoreCase("ADMIN", "ACTIVE") <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể hạ quyền quản trị viên hoạt động cuối cùng.");
+        }
+        user.setRole(role);
+        User saved = userRepository.save(user);
+        return toUserResponse(saved, countRentals(saved.getId()));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductAdminResponse> getProducts(String search, String requestedStatus, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        String status = normalizeProductStatusFilter(requestedStatus);
+        String joins = """
+                FROM products p
+                JOIN users owner ON owner.id = p.owner_id
+                LEFT JOIN categories c ON c.id = p.category_id
+                LEFT JOIN brands b ON b.id = p.brand_id
+                LEFT JOIN LATERAL (
+                    SELECT image_url FROM product_images
+                    WHERE product_id = p.id
+                    ORDER BY is_primary DESC NULLS LAST, id LIMIT 1
+                ) image ON TRUE
+                """;
+        StringBuilder where = new StringBuilder(" WHERE TRUE");
+        List<Object> args = new ArrayList<>();
+        if (!normalizedSearch.isBlank()) {
+            where.append(" AND LOWER(CONCAT_WS(' ', p.id::text, p.name, owner.full_name, owner.email, c.name, b.name)) LIKE ?");
+            args.add("%" + normalizedSearch + "%");
+        }
+        if (status != null) {
+            if ("PENDING".equals(status)) {
+                where.append(" AND UPPER(COALESCE(p.status, '')) IN ('PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL')");
+            } else {
+                where.append(" AND UPPER(COALESCE(p.status, '')) = ?");
+                args.add(status);
+            }
+        }
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) " + joins + where, Long.class, args.toArray());
+        List<Object> queryArgs = new ArrayList<>(args);
+        queryArgs.add(safeSize);
+        queryArgs.add((long) safePage * safeSize);
+        List<ProductAdminResponse> products = jdbcTemplate.query("""
+                SELECT p.id, p.name, owner.full_name AS owner_name, owner.email AS owner_email,
+                       c.name AS category_name, b.name AS brand_name, p.daily_price, p.deposit_amount,
+                       COALESCE(p.stock, 0) AS stock, p.status, COALESCE(image.image_url, '') AS image_key,
+                       p.description, p.created_at
+                """ + joins + where + " ORDER BY p.created_at DESC NULLS LAST, p.id DESC LIMIT ? OFFSET ?",
+                (rs, rowNum) -> new ProductAdminResponse(
+                        rs.getLong("id"), rs.getString("name"), rs.getString("owner_name"),
+                        rs.getString("owner_email"), rs.getString("category_name"), rs.getString("brand_name"),
+                        rs.getBigDecimal("daily_price"), rs.getBigDecimal("deposit_amount"), rs.getInt("stock"),
+                        rs.getString("status"), rs.getString("image_key"), rs.getString("description"),
+                        rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime()),
+                queryArgs.toArray());
+        long totalElements = total == null ? 0 : total;
+        return new PageResponse<>(products, safePage, safeSize, totalElements,
+                (int) Math.ceil((double) totalElements / safeSize));
+    }
+
+    @Transactional
+    public void updateProductStatus(long productId, String requestedStatus) {
+        String status = requestedStatus == null ? "" : requestedStatus.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("ACTIVE", "INACTIVE").contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sản phẩm không hợp lệ.");
+        }
+        int changed = jdbcTemplate.update("UPDATE products SET status = ? WHERE id = ?", status, productId);
+        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm.");
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<RentalAdminResponse> getOrders(String search, String requestedStatus, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+        String status = normalizeOrderStatusFilter(requestedStatus);
+        String from = """
+                FROM rentals r
+                JOIN users renter ON renter.id = r.renter_id
+                LEFT JOIN rental_items ri ON ri.rental_id = r.id
+                LEFT JOIN products p ON p.id = ri.product_id
+                LEFT JOIN LATERAL (
+                    SELECT method, status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1
+                ) payment ON TRUE
+                """;
+        StringBuilder where = new StringBuilder(" WHERE TRUE");
+        List<Object> args = new ArrayList<>();
+        if (!normalizedSearch.isBlank()) {
+            where.append(" AND LOWER(CONCAT_WS(' ', r.id::text, r.rental_code, renter.full_name, renter.email, r.contact_phone, p.name)) LIKE ?");
+            args.add("%" + normalizedSearch + "%");
+        }
+        if (status != null) {
+            if ("ACTIVE".equals(status)) {
+                where.append(" AND UPPER(COALESCE(r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')");
+            } else if ("COMPLETED".equals(status)) {
+                where.append(" AND UPPER(COALESCE(r.status, '')) IN ('COMPLETED', 'COMPLETE', 'RETURNED', 'CLOSED')");
+            } else if ("CANCELLED".equals(status)) {
+                where.append(" AND UPPER(COALESCE(r.status, '')) IN ('CANCELLED', 'CANCELED')");
+            } else {
+                where.append(" AND UPPER(COALESCE(r.status, '')) = ?");
+                args.add(status);
+            }
+        }
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT r.id) " + from + where, Long.class, args.toArray());
+        List<Object> queryArgs = new ArrayList<>(args);
+        queryArgs.add(safeSize);
+        queryArgs.add((long) safePage * safeSize);
+        List<RentalAdminResponse> orders = jdbcTemplate.query("""
+                SELECT r.id, r.rental_code, renter.full_name AS renter_name, renter.email AS renter_email,
+                       r.contact_phone, r.status, COALESCE(payment.status, 'UNPAID') AS payment_status,
+                       r.delivery_method, COUNT(ri.id)::integer AS item_count,
+                       COALESCE(STRING_AGG(p.name || ' × ' || ri.quantity, ', ' ORDER BY ri.id), '') AS product_summary,
+                       r.total_amount, r.created_at
+                """ + from + where + " GROUP BY r.id, renter.full_name, renter.email, payment.status " +
+                " ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT ? OFFSET ?",
+                (rs, rowNum) -> new RentalAdminResponse(
+                        rs.getLong("id"), rs.getString("rental_code"), rs.getString("renter_name"),
+                        rs.getString("renter_email"), rs.getString("contact_phone"), rs.getString("status"),
+                        rs.getString("payment_status"), rs.getString("delivery_method"), rs.getInt("item_count"),
+                        rs.getString("product_summary"), rs.getBigDecimal("total_amount"),
+                        rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime()),
+                queryArgs.toArray());
+        long totalElements = total == null ? 0 : total;
+        return new PageResponse<>(orders, safePage, safeSize, totalElements,
+                (int) Math.ceil((double) totalElements / safeSize));
+    }
+
+    @Transactional(readOnly = true)
+    public RentalAdminDetail getOrder(long rentalId) {
+        List<RentalAdminDetail> orders = jdbcTemplate.query("""
+                SELECT r.id, r.rental_code, renter.full_name AS renter_name, renter.email AS renter_email,
+                       r.status, COALESCE(payment.status, 'UNPAID') AS payment_status, payment.method AS payment_method,
+                       r.delivery_method, r.delivery_address, r.district, r.city, r.contact_name,
+                       r.contact_phone, r.contact_email, COALESCE(r.total_amount, 0) AS total_amount,
+                       GREATEST(COALESCE(r.total_amount, 0) - COALESCE(r.deposit_amount, 0) - COALESCE(r.service_fee, 0), 0) AS rental_amount,
+                       COALESCE(r.deposit_amount, 0) AS deposit_amount, COALESCE(r.service_fee, 0) AS service_fee,
+                       r.created_at
+                FROM rentals r
+                JOIN users renter ON renter.id = r.renter_id
+                LEFT JOIN LATERAL (
+                    SELECT method, status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1
+                ) payment ON TRUE
+                WHERE r.id = ?
+                """, (rs, rowNum) -> new RentalAdminDetail(
+                rs.getLong("id"), rs.getString("rental_code"), rs.getString("renter_name"),
+                rs.getString("renter_email"), rs.getString("status"), rs.getString("payment_status"),
+                rs.getString("payment_method"), rs.getString("delivery_method"), rs.getString("delivery_address"),
+                rs.getString("district"), rs.getString("city"), rs.getString("contact_name"),
+                rs.getString("contact_phone"), rs.getString("contact_email"), rs.getBigDecimal("total_amount"),
+                rs.getBigDecimal("rental_amount"), rs.getBigDecimal("deposit_amount"), rs.getBigDecimal("service_fee"),
+                rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime(),
+                List.of()), rentalId);
+        if (orders.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
+        RentalAdminDetail order = orders.get(0);
+        List<RentalLineAdmin> items = jdbcTemplate.query("""
+                SELECT p.id AS product_id, p.name AS product_name, owner.full_name AS owner_name,
+                       ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal, ri.status
+                FROM rental_items ri
+                JOIN products p ON p.id = ri.product_id
+                JOIN users owner ON owner.id = p.owner_id
+                WHERE ri.rental_id = ?
+                ORDER BY ri.id
+                """, (rs, rowNum) -> new RentalLineAdmin(
+                rs.getLong("product_id"), rs.getString("product_name"), rs.getString("owner_name"),
+                rs.getInt("quantity"), rs.getObject("start_date", java.time.LocalDate.class),
+                rs.getObject("end_date", java.time.LocalDate.class), rs.getBigDecimal("daily_price"),
+                rs.getBigDecimal("subtotal"), rs.getString("status")), rentalId);
+        return new RentalAdminDetail(order.id(), order.rentalCode(), order.renterName(), order.renterEmail(),
+                order.status(), order.paymentStatus(), order.paymentMethod(), order.deliveryMethod(),
+                order.deliveryAddress(), order.district(), order.city(), order.contactName(), order.contactPhone(),
+                order.contactEmail(), order.totalAmount(), order.rentalAmount(), order.depositAmount(),
+                order.serviceFee(), order.createdAt(), items);
+    }
+
+    @Transactional
+    public void cancelPendingOrder(long rentalId) {
+        List<String> statuses = jdbcTemplate.query("SELECT status FROM rentals WHERE id = ? FOR UPDATE",
+                (rs, rowNum) -> rs.getString("status"), rentalId);
+        if (statuses.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
+        if (!"PENDING".equalsIgnoreCase(statuses.get(0))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể hủy đơn đang chờ xác nhận.");
+        }
+        jdbcTemplate.query("SELECT id FROM rental_items WHERE rental_id = ? ORDER BY id FOR UPDATE",
+                (rs, rowNum) -> rs.getLong("id"), rentalId);
+        Integer progressedItems = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM rental_items
+                WHERE rental_id = ? AND UPPER(COALESCE(status, '')) <> 'PENDING'
+                """, Integer.class, rentalId);
+        if (progressedItems != null && progressedItems > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Đơn đã có thiết bị được xử lý. Vui lòng để Owner hoàn tất quy trình hiện tại.");
+        }
+        Integer itemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM rental_items WHERE rental_id = ?",
+                Integer.class, rentalId);
+        if (itemCount == null || itemCount == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Đơn thuê chưa có thiết bị để hoàn kho.");
+        }
+        jdbcTemplate.update("""
+                UPDATE products p SET stock = COALESCE(p.stock, 0) + rental_items.quantity
+                FROM (
+                    SELECT product_id, SUM(quantity)::integer AS quantity
+                    FROM rental_items WHERE rental_id = ? GROUP BY product_id
+                ) rental_items
+                WHERE p.id = rental_items.product_id
+                """, rentalId);
+        jdbcTemplate.update("UPDATE rental_items SET status = 'CANCELLED' WHERE rental_id = ?", rentalId);
+        jdbcTemplate.update("UPDATE rentals SET status = 'CANCELLED' WHERE id = ?", rentalId);
+        jdbcTemplate.update("""
+                UPDATE payments SET status = 'REFUNDED'
+                WHERE rental_id = ? AND UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
+                """, rentalId);
     }
 
     private List<MonthlyRevenue> getMonthlyRevenue() {
@@ -201,20 +454,6 @@ public class AdminService {
         });
     }
 
-    private Map<Long, Long> getRentalCounts(List<User> users) {
-        if (users.isEmpty()) return Map.of();
-        String placeholders = String.join(",", java.util.Collections.nCopies(users.size(), "?"));
-        String sql = "SELECT renter_id, COUNT(*) AS rental_count FROM rentals WHERE renter_id IN (" + placeholders + ") GROUP BY renter_id";
-        List<Object> ids = new ArrayList<>(users.stream().map(User::getId).toList());
-        Map<Long, Long> counts = new HashMap<>();
-        jdbcTemplate.query(sql, statement -> {
-            for (int index = 0; index < ids.size(); index++) statement.setLong(index + 1, (Long) ids.get(index));
-        }, resultSet -> {
-            counts.put(resultSet.getLong("renter_id"), resultSet.getLong("rental_count"));
-        });
-        return counts;
-    }
-
     private long countRentals(Long userId) {
         Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM rentals WHERE renter_id = ?", Long.class, userId);
         return count == null ? 0 : count;
@@ -252,6 +491,24 @@ public class AdminService {
         if ("ACTIVE".equals(normalized)) return normalized;
         if ("LOCKED".equals(normalized) || "BLOCKED".equals(normalized)) return "LOCKED";
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái lọc không hợp lệ.");
+    }
+
+    private String normalizeProductStatusFilter(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) return null;
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (List.of("ACTIVE", "INACTIVE", "PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL", "REJECTED", "SUSPENDED", "RENTED").contains(normalized)) {
+            return normalized;
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái lọc sản phẩm không hợp lệ.");
+    }
+
+    private String normalizeOrderStatusFilter(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) return null;
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (List.of("PENDING", "CONFIRMED", "ACTIVE", "COMPLETED", "CANCELLED", "REJECTED").contains(normalized)) {
+            return normalized;
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái đơn thuê không hợp lệ.");
     }
 
     private long scalarLong(String sql) {

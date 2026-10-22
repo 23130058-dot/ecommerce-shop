@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
-import avatar from '../../assets/lensrent/avatar.png'
 import brandMark from '../../assets/lensrent/brand-mark.svg'
 import Footer from '../layout/Footer.jsx'
-import { getStoredAuth } from '../../services/authApi.js'
+import AccountAvatar from '../layout/AccountAvatar.jsx'
+import useCurrentAccount from '../../hooks/useCurrentAccount.js'
 
 export function AdminIcon({ name, className = 'size-4' }) {
   const common = {
@@ -42,7 +42,8 @@ export function AdminIcon({ name, className = 'size-4' }) {
 const primaryLinks = [
   { label: 'Tổng quan', icon: 'grid', to: '/admin' },
   { label: 'Quản lý người dùng', icon: 'users', to: '/admin/users' },
-  { label: 'Duyệt thiết bị', icon: 'camera', to: '/admin/devices' },
+  { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
+  { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
   { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes', disabled: true },
 ]
 
@@ -62,12 +63,13 @@ function NavigationItem({ item, pathname }) {
 
 export default function AdminLayout({ children }) {
   const { pathname } = useLocation()
-  const admin = getStoredAuth()?.user
+  const { auth } = useCurrentAccount()
+  const admin = auth?.user
   const adminName = admin?.fullName || admin?.email || 'Quản trị viên'
   return (
     <div className="min-h-screen bg-[#f7f8fa] text-[#1f2937]">
       <header className="sticky top-0 z-20 h-[62px] border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-2" aria-label="LensRent trang chủ">
               <span className="flex size-8 items-center justify-center rounded-lg bg-[#f45116]"><img className="size-[18px]" src={brandMark} alt="" /></span>
@@ -82,16 +84,16 @@ export default function AdminLayout({ children }) {
               <span className="text-lg leading-none">♧</span><span className="absolute right-1 top-1 size-2 rounded-full border border-white bg-[#f45116]" />
             </button>
             <div className="flex items-center gap-2.5 border-l border-gray-200 pl-3">
-              <img src={avatar} className="size-8 rounded-full object-cover" alt="Ảnh đại diện quản trị viên" />
+              <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-8" alt="Ảnh đại diện quản trị viên" />
               <div className="hidden sm:block"><p className="max-w-40 truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="text-[10px] text-gray-400">Admin Hệ Thống</p></div>
             </div>
           </div>
         </div>
       </header>
-      <div className="mx-auto flex max-w-[1440px] items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8 lg:px-8">
+      <div className="mx-auto flex max-w-[1280px] items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
         <aside className="sticky top-[82px] hidden w-[205px] shrink-0 rounded-xl border border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
           <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
-            <img src={avatar} className="size-9 rounded-full object-cover" alt="" />
+            <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-9" />
             <div className="min-w-0"><p className="truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="truncate text-[10px] text-gray-400">Admin Hệ Thống</p></div>
             <span className="ml-auto text-xs text-gray-400">⌄</span>
           </div>

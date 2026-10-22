@@ -18,7 +18,7 @@ async function requestAdminApi(path, options = {}) {
     throw new Error('Không kết nối được backend. Hãy kiểm tra Spring Boot đang chạy ở cổng 8080.')
   }
 
-  const body = await response.json().catch(() => null)
+  const body = response.status === 204 ? null : await response.json().catch(() => null)
   if (!response.ok) {
     if (response.status === 401) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
     if (response.status === 403) throw new Error('Tài khoản hiện tại không có quyền ADMIN để sử dụng chức năng này.')
@@ -44,4 +44,41 @@ export function updateAdminUserStatus(userId, status) {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
+}
+
+export function updateAdminUserRole(userId, role) {
+  return requestAdminApi(`/api/admin/users/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  })
+}
+
+function buildPageQuery({ search = '', status = 'all', page = 0, size = 10 } = {}) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (search.trim()) params.set('search', search.trim())
+  if (status !== 'all') params.set('status', status)
+  return params
+}
+
+export function getAdminProducts(options = {}) {
+  return requestAdminApi(`/api/admin/products?${buildPageQuery(options)}`)
+}
+
+export function updateAdminProductStatus(productId, status) {
+  return requestAdminApi(`/api/admin/products/${productId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+export function getAdminOrders(options = {}) {
+  return requestAdminApi(`/api/admin/orders?${buildPageQuery(options)}`)
+}
+
+export function getAdminOrder(orderId) {
+  return requestAdminApi(`/api/admin/orders/${orderId}`)
+}
+
+export function cancelAdminOrder(orderId) {
+  return requestAdminApi(`/api/admin/orders/${orderId}/cancel`, { method: 'PATCH' })
 }

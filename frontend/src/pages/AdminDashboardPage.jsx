@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import avatar from '../assets/lensrent/avatar.png'
 import brandMark from '../assets/lensrent/brand-mark.svg'
+import AccountAvatar from '../components/layout/AccountAvatar.jsx'
 import Footer from '../components/layout/Footer.jsx'
 import { getAdminDashboard } from '../services/adminApi.js'
-import { getStoredAuth } from '../services/authApi.js'
+import useCurrentAccount from '../hooks/useCurrentAccount.js'
 
 const adminLinks = [
   { label: 'Tổng quan', icon: 'grid', active: true, to: '/admin' },
   { label: 'Quản lý người dùng', icon: 'users', to: '/admin/users' },
-  { label: 'Duyệt thiết bị', icon: 'camera', to: '/admin/devices' },
+  { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
+  { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
   { label: 'Khiếu nại & Tranh chấp', icon: 'message', disabled: true },
 ]
 
@@ -147,17 +148,17 @@ function RevenueLineChart({ rows, metric }) {
 function CategoryPieChart({ items, total }) {
   const radius = 58
   const circumference = 2 * Math.PI * radius
-  let offset = 0
+  const segments = items.reduce((result, item) => {
+    const length = circumference * (item.value / 100)
+    return { offset: result.offset + length, items: [...result.items, { item, length, offset: result.offset }] }
+  }, { offset: 0, items: [] }).items
 
   return (
     <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:justify-center sm:gap-9">
       <div className="relative size-[170px] shrink-0" role="img" aria-label="Biểu đồ tròn doanh thu theo danh mục thiết bị">
         <svg className="size-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
           <circle cx="80" cy="80" r={radius} fill="none" stroke="#f1f3f5" strokeWidth="20" />
-          {items.map((item) => {
-            const segment = circumference * (item.value / 100)
-            const segmentOffset = offset
-            offset += segment
+          {segments.map(({ item, length, offset }) => {
             return (
               <circle
                 key={item.name}
@@ -167,8 +168,8 @@ function CategoryPieChart({ items, total }) {
                 fill="none"
                 stroke={item.color}
                 strokeWidth="20"
-                strokeDasharray={`${segment} ${circumference - segment}`}
-                strokeDashoffset={-segmentOffset}
+                strokeDasharray={`${length} ${circumference - length}`}
+                strokeDashoffset={-offset}
               />
             )
           })}
@@ -239,7 +240,8 @@ function SidebarLink({ item }) {
 }
 
 export default function AdminDashboardPage() {
-  const admin = getStoredAuth()?.user
+  const { auth } = useCurrentAccount()
+  const admin = auth?.user
   const adminName = admin?.fullName || admin?.email || 'Quản trị viên'
   const [metric, setMetric] = useState('revenue')
   const [monthCount, setMonthCount] = useState(6)
@@ -281,7 +283,7 @@ export default function AdminDashboardPage() {
   return (
     <div className="min-h-screen bg-[#f7f8fa] text-[#1f2937]">
       <header className="sticky top-0 z-20 h-[62px] border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-2" aria-label="LensRent trang chủ">
               <span className="flex size-8 items-center justify-center rounded-lg bg-[#f45116]"><img className="size-[18px]" src={brandMark} alt="" /></span>
@@ -299,7 +301,7 @@ export default function AdminDashboardPage() {
               <span className="absolute right-1 top-1 size-2 rounded-full border border-white bg-[#f45116]" />
             </button>
             <div className="flex items-center gap-2.5 border-l border-gray-200 pl-3">
-              <img src={avatar} className="size-8 rounded-full object-cover" alt="Ảnh đại diện quản trị viên" />
+              <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-8" alt="Ảnh đại diện quản trị viên" />
               <div className="hidden sm:block">
                 <p className="max-w-40 truncate text-[11px] font-semibold text-gray-800">{adminName}</p>
                 <p className="text-[10px] text-gray-400">Admin Hệ Thống</p>
@@ -309,10 +311,10 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1440px] items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8 lg:px-8">
+      <div className="mx-auto flex max-w-[1280px] items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
         <aside className="sticky top-[82px] hidden w-[205px] shrink-0 rounded-xl border border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
           <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
-            <img src={avatar} className="size-9 rounded-full object-cover" alt="" />
+            <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-9" />
             <div className="min-w-0">
               <p className="truncate text-[11px] font-semibold text-gray-800">{adminName}</p>
               <p className="truncate text-[10px] text-gray-400">Admin Hệ Thống</p>

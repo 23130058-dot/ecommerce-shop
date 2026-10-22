@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { API_BASE_URL, clearAuth, getStoredAuth, updateStoredUser } from '../../services/authApi.js'
-import { getAccountProfile } from '../../services/accountApi.js'
+import { clearAuth } from '../../services/authApi.js'
+import useCurrentAccount from '../../hooks/useCurrentAccount.js'
 
-import avatar from '../../assets/lensrent/avatar.png'
 import brandMark from '../../assets/lensrent/brand-mark.svg'
 import cartIcon from '../../assets/lensrent/cart.svg'
 import chevronDownIcon from '../../assets/lensrent/chevron-down.svg'
 import searchIcon from '../../assets/lensrent/search.svg'
 import wishlistIcon from '../../assets/lensrent/wishlist.svg'
 import { getCart, getWishlist } from '../../services/shoppingApi.js'
-
-const accountLinks = [
-  { to: '/renter', label: 'Trang Renter' },
-  { to: '/renter/orders', label: 'Đơn thuê của tôi' },
-  { to: '/renter/favorites', label: 'Thiết bị yêu thích' },
-  { to: '/renter/profile', label: 'Thông tin cá nhân' },
-]
+import AccountAvatar from './AccountAvatar.jsx'
 
 export default function Header({
   searchValue = '',
@@ -24,7 +17,7 @@ export default function Header({
   onSearch = () => {},
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
-  const [auth, setAuth] = useState(() => getStoredAuth())
+  const { auth, setAuth } = useCurrentAccount()
   const [cartCount, setCartCount] = useState(0)
   const [wishlistCount, setWishlistCount] = useState(0)
   const [shoppingRevision, setShoppingRevision] = useState(0)
@@ -34,47 +27,14 @@ export default function Header({
   const location = useLocation()
 
   useEffect(() => {
-    const syncAuth = () => {
-      const currentAuth = getStoredAuth()
-      setAuth(currentAuth)
-      if (!currentAuth) {
-        setCartCount(0)
-        setWishlistCount(0)
-      }
-    }
     const refreshShopping = () => setShoppingRevision((revision) => revision + 1)
-    window.addEventListener('lensrent-auth-changed', syncAuth)
-    window.addEventListener('storage', syncAuth)
     window.addEventListener('lensrent-shopping-changed', refreshShopping)
     return () => {
-      window.removeEventListener('lensrent-auth-changed', syncAuth)
-      window.removeEventListener('storage', syncAuth)
       window.removeEventListener('lensrent-shopping-changed', refreshShopping)
     }
   }, [])
   useEffect(() => {
     if (!auth?.accessToken) return undefined
-    let mounted = true
-    const accessToken = auth.accessToken
-    getAccountProfile()
-      .then((profile) => {
-        if (!mounted || getStoredAuth()?.accessToken !== accessToken) return
-        const profileFields = {
-          fullName: profile.fullName,
-          email: profile.email,
-          phone: profile.phone,
-          avatarUrl: profile.avatarUrl,
-        }
-        updateStoredUser(profileFields)
-        setAuth((current) => current?.accessToken === accessToken
-          ? { ...current, user: { ...current.user, ...profileFields } }
-          : current)
-      })
-      .catch(() => {})
-    return () => { mounted = false }
-  }, [auth?.accessToken])
-  useEffect(() => {
-    if (!auth) return undefined
     const controller = new AbortController()
     Promise.all([getCart({ signal: controller.signal }), getWishlist({ signal: controller.signal })])
       .then(([cart, wishlist]) => {
@@ -84,7 +44,7 @@ export default function Header({
       })
       .catch((error) => { if (error.name !== 'AbortError') { setCartCount(0); setWishlistCount(0) } })
     return () => controller.abort()
-  }, [auth, shoppingRevision])
+  }, [auth?.accessToken, shoppingRevision])
   useEffect(() => {
     if (!auth?.expiresAt) return undefined
     const delay = auth.expiresAt - Date.now()
@@ -132,6 +92,14 @@ export default function Header({
     navigate('/login')
   }
 
+  const role = auth?.user?.role?.toUpperCase() || 'RENTER'
+  const roleDashboard = role === 'ADMIN'
+    ? { to: '/admin', label: 'Bảng điều khiển quản trị', description: 'Quản lý hệ thống LensRent' }
+    : role === 'OWNER'
+      ? { to: '/owner', label: 'Khu vực chủ thiết bị', description: 'Quản lý tin đăng và đơn thuê' }
+      : { to: '/renter', label: 'Khu vực người thuê', description: 'Theo dõi thuê và thiết bị đã lưu' }
+  const roleLabel = role === 'ADMIN' ? 'Quản trị viên' : role === 'OWNER' ? 'Chủ thiết bị' : 'Người thuê'
+
   return (
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto grid min-h-16 max-w-[1280px] grid-cols-[1fr_auto] items-center gap-x-5 gap-y-3 px-4 py-3 sm:px-6 xl:flex xl:gap-8 xl:px-6 xl:py-0">
@@ -147,7 +115,7 @@ export default function Header({
             <Link className="transition hover:text-[#ff5500]" to="/">Trang chủ</Link>
             <Link className="transition hover:text-[#ff5500]" to="/categories">Danh mục</Link>
             <Link className="transition hover:text-[#ff5500]" to="/compare">So sánh</Link>
-            <Link className="transition hover:text-[#ff5500]" to="/wishlist">Wishlist</Link>
+            <Link className="transition hover:text-[#ff5500]" to="/wishlist">Yêu thích</Link>
           </nav>
         </div>
 
@@ -195,59 +163,67 @@ export default function Header({
               onClick={() => setAccountMenuOpen((open) => !open)}
               type="button"
             >
-              <img className="size-7 rounded-full object-cover" src={auth?.user?.avatarUrl ? (auth.user.avatarUrl.startsWith('http') ? auth.user.avatarUrl : `${API_BASE_URL}${auth.user.avatarUrl}`) : avatar} alt="" />
+              <AccountAvatar avatarUrl={auth?.user?.avatarUrl} className="size-7" />
               <img className="size-3" src={chevronDownIcon} alt="" />
             </button>
 
             {accountMenuOpen && (
               <div
                 aria-label="Menu tài khoản"
-                className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white py-2 shadow-xl"
+                className="absolute right-0 top-full z-50 mt-3 w-[min(19rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-100 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
                 role="menu"
               >
-                <div className="border-b border-gray-100 px-4 pb-3 pt-2">
-                  <p className="text-sm font-semibold text-gray-900">{auth?.user?.fullName || 'Tài khoản LensRent'}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{auth?.user?.email || 'Chưa đăng nhập'}</p>
+                <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3">
+                  <AccountAvatar avatarUrl={auth?.user?.avatarUrl} className="size-11 shrink-0 ring-2 ring-white" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900">{auth?.user?.fullName || 'Tài khoản LensRent'}</p>
+                    <p className="mt-0.5 truncate text-xs text-gray-500">{auth?.user?.email || ''}</p>
+                    <span className="mt-1.5 inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-[#d94a0b]">{roleLabel}</span>
+                  </div>
                 </div>
 
-                <div className="py-1">
-                  {accountLinks.map((item) => (
-                    <Link
-                      className="block px-4 py-2.5 text-sm text-gray-700 transition hover:bg-orange-50 hover:text-[#e94b0a]"
-                      key={item.to}
-                      onClick={() => setAccountMenuOpen(false)}
-                      role="menuitem"
-                      to={item.to}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-
-                <div className="border-t border-gray-100 py-1">
-                  {auth?.user?.role?.toUpperCase() === 'ADMIN' && (
-                    <Link
-                      className="block px-4 py-2.5 text-sm font-semibold text-[#e94b0a] transition hover:bg-orange-50"
-                      onClick={() => setAccountMenuOpen(false)}
-                      role="menuitem"
-                      to="/admin"
-                    >
-                      Trang quản trị Admin
-                    </Link>
-                  )}
+                <div className="py-2">
                   <Link
-                    className="block px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-orange-50 hover:text-[#e94b0a]"
+                    className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-orange-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}
                     role="menuitem"
-                    to="/owner"
+                    to={roleDashboard.to}
                   >
-                    Trang Owner · Quản lý thiết bị
+                    <span>{roleDashboard.label}<span className="mt-0.5 block text-[11px] font-normal text-gray-500">{roleDashboard.description}</span></span>
+                    <span aria-hidden="true" className="text-gray-400">›</span>
                   </Link>
                 </div>
 
-                <div className="border-t border-gray-100 pt-1">
+                <div className="border-t border-gray-100 py-2">
+                  <Link
+                    className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
+                    onClick={() => setAccountMenuOpen(false)}
+                    role="menuitem"
+                    to="/renter/orders"
+                  >
+                    Đơn thuê của tôi
+                  </Link>
+                  <Link
+                    className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
+                    onClick={() => setAccountMenuOpen(false)}
+                    role="menuitem"
+                    to="/renter/favorites"
+                  >
+                    Thiết bị yêu thích
+                  </Link>
+                  <Link
+                    className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
+                    onClick={() => setAccountMenuOpen(false)}
+                    role="menuitem"
+                    to="/renter/profile"
+                  >
+                    Cài đặt tài khoản
+                  </Link>
+                </div>
+
+                <div className="border-t border-gray-100 pt-2">
                   <button
-                    className="block w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                    className="block w-full rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
                     onClick={handleLogout}
                     role="menuitem"
                     type="button"

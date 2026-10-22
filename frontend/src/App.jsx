@@ -8,7 +8,8 @@ import RenterPage from './pages/RenterPage.jsx'
 import AccountSettingsPage from './pages/AccountSettingsPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
-import AdminDevicesPage from './pages/AdminDevicesPage.jsx'
+import AdminProductsPage from './pages/AdminProductsPage.jsx'
+import AdminOrdersPage from './pages/AdminOrdersPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import WishlistPage from './pages/WishlistPage.jsx'
 import ComparePage from './pages/ComparePage.jsx'
@@ -46,7 +47,9 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />
         <Route path="/admin/users" element={<AdminOnly><AdminUsersPage /></AdminOnly>} />
-        <Route path="/admin/devices" element={<AdminOnly><AdminDevicesPage /></AdminOnly>} />
+        <Route path="/admin/products" element={<AdminOnly><AdminProductsPage /></AdminOnly>} />
+        <Route path="/admin/devices" element={<Navigate to="/admin/products" replace />} />
+        <Route path="/admin/orders" element={<AdminOnly><AdminOrdersPage /></AdminOnly>} />
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />

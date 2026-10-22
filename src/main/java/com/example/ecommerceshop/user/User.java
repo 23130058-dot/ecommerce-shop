@@ -70,6 +70,7 @@ public class User {
     public String getStatus() { return status; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
+    public void setRole(String role) { this.role = role; }
     public void setStatus(String status) { this.status = status; }
 
     public void updateProfile(String fullName, String email, String phone, LocalDate birthday,
