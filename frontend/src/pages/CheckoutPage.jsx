@@ -5,6 +5,7 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { checkoutCart, getCart, updateCartItem } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 const DRAFT_KEY = 'lensrent.checkout-draft'
 const DELIVERY_FEE = 50000
@@ -50,7 +51,7 @@ function Field({ label, ...props }) {
   </label>
 }
 
-function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, error, isPayment }) {
+function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, isPayment }) {
   const deliveryFee = deliveryMethod === 'HOME' ? DELIVERY_FEE : 0
   const total = Number(cart.rentalTotal || 0) + Number(cart.depositTotal || 0) + Number(cart.serviceFee || 0) + deliveryFee
   return <aside className="h-fit rounded-xl border border-gray-200 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.025)] sm:p-5">
@@ -71,7 +72,6 @@ function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, erro
     </div>
     <div className="mt-4 flex items-end justify-between border-t border-gray-100 pt-4"><span className="text-sm font-bold">Tổng thanh toán</span><span className="text-xl font-extrabold text-[#ff5500]">{money(total)}</span></div>
     <p className="mt-1 text-right text-xs text-gray-400">Đã bao gồm tiền cọc {money(cart.depositTotal)}</p>
-    {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700" role="alert">{error}</p>}
     {isPayment ? <>
       <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-wait disabled:bg-gray-300" disabled={busy} onClick={onSubmitPayment} type="button">{busy ? 'Đang ghi nhận thanh toán…' : 'Đồng ý thanh toán →'}</button>
     </> : <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:bg-gray-300" disabled={busy} onClick={onContinue} type="button">Tiếp tục thanh toán →</button>}
@@ -126,11 +126,10 @@ export default function CheckoutPage() {
 
   const continueToPayment = async (event) => {
     event.preventDefault()
-    setError('')
-    if (!cart.items.length) { setError('Giỏ hàng đang trống.'); return }
-    if (!draft.startDate || !draft.endDate || draft.endDate <= draft.startDate) { setError('Vui lòng chọn ngày kết thúc sau ngày bắt đầu.'); return }
-    if (!draft.contactName.trim() || !draft.contactPhone.trim()) { setError('Vui lòng nhập họ tên và số điện thoại người thuê.'); return }
-    if (draft.deliveryMethod === 'HOME' && !draft.deliveryAddress.trim()) { setError('Vui lòng nhập địa chỉ giao hàng.'); return }
+    if (!cart.items.length) { showToast('Giỏ hàng đang trống.', 'warning'); return }
+    if (!draft.startDate || !draft.endDate || draft.endDate <= draft.startDate) { showToast('Vui lòng chọn ngày kết thúc sau ngày bắt đầu.', 'warning'); return }
+    if (!draft.contactName.trim() || !draft.contactPhone.trim()) { showToast('Vui lòng nhập họ tên và số điện thoại người thuê.', 'warning'); return }
+    if (draft.deliveryMethod === 'HOME' && !draft.deliveryAddress.trim()) { showToast('Vui lòng nhập địa chỉ giao hàng.', 'warning'); return }
     setBusy(true)
     try {
       await Promise.all(cart.items.map((item) => updateCartItem(item.id, {
@@ -143,7 +142,7 @@ export default function CheckoutPage() {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
       navigate('/checkout/payment')
     } catch (actionError) {
-      setError(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -151,7 +150,6 @@ export default function CheckoutPage() {
 
   const submitPayment = async () => {
     setBusy(true)
-    setError('')
     try {
       const result = await checkoutCart({
         deliveryMethod: draft.deliveryMethod,
@@ -164,7 +162,7 @@ export default function CheckoutPage() {
       })
       navigate(`/checkout/complete/${result.rentalId}`, { state: { created: true } })
     } catch (actionError) {
-      setError(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusy(false)
     }
@@ -186,7 +184,7 @@ export default function CheckoutPage() {
               <div className="mt-5 rounded-lg border border-orange-100 bg-[#fff6ee] p-4 text-sm leading-6 text-orange-900"><b className="text-[#ed4b0a]">Lưu ý về tiền đặt cọc</b><p className="mt-1">Tiền cọc được ghi nhận trong đơn và hoàn lại sau khi thiết bị được bàn giao, kiểm tra.</p></div>
             </Panel>
           </div>
-          <Summary cart={cart} deliveryMethod={draft.deliveryMethod} error={error} isPayment onSubmitPayment={submitPayment} busy={busy} />
+          <Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment onSubmitPayment={submitPayment} busy={busy} />
         </div>
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.78fr)]">
@@ -225,9 +223,8 @@ export default function CheckoutPage() {
               <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-sm font-bold">♧ &nbsp;Hỗ trợ kỹ thuật</p><p className="mt-1 text-xs leading-5 text-gray-500">Đội ngũ LensRent hỗ trợ trong suốt thời gian thuê thiết bị.</p></div>
             </div>
             <button className="min-h-11 w-full rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 lg:hidden" disabled={busy} type="submit">{busy ? 'Đang lưu thông tin…' : 'Tiếp tục thanh toán →'}</button>
-            {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700" role="alert">{error}</p>}
           </form>
-          <div className="lg:sticky lg:top-5"><Summary cart={cart} deliveryMethod={draft.deliveryMethod} error="" isPayment={false} onContinue={continueToPayment} busy={busy} /></div>
+          <div className="lg:sticky lg:top-5"><Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment={false} onContinue={continueToPayment} busy={busy} /></div>
         </div>
       )}
     </main>

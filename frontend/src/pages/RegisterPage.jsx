@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { registerUser, saveAuth } from '../services/authApi.js'
 import Footer from '../components/layout/Footer.jsx'
+import { showToast } from '../services/toast.js'
 
 function EyeIcon({ visible }) {
   return (
@@ -54,15 +55,13 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
-  const [notice, setNotice] = useState(null)
 
   const passwordStrength = password
     ? [password.length >= 8, /[A-Z]/.test(password), /[0-9]/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length
     : 2
 
-const handleSubmit = async (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    setNotice(null)
     const formData = new FormData(event.currentTarget)
     try {
       const auth = await registerUser({
@@ -72,14 +71,15 @@ const handleSubmit = async (event) => {
         password: formData.get('password'),
       })
       saveAuth(auth)
+      showToast('Tạo tài khoản thành công.', 'success')
       navigate('/')
     } catch (error) {
-      setNotice({ type: 'error', message: error.message })
+      showToast(error.message, 'error')
     }
   }
 
   const showProviderNotice = (provider) => {
-    setNotice({ type: 'error', message: 'Đăng ký bằng ' + provider + ' chưa được hỗ trợ.' })
+    showToast('Đăng ký bằng ' + provider + ' chưa được hỗ trợ.', 'info')
   }
 
   return (
@@ -233,7 +233,6 @@ const handleSubmit = async (event) => {
                 <button className="mt-5 flex h-11 w-full items-center justify-center rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" type="submit">
                   Tạo tài khoản
                 </button>
-                {notice && <p aria-live="polite" className="mt-2 text-[11px] leading-4 text-red-600">{notice.message}</p>}
               </form>
 
               <div className="relative mt-6 flex h-6 items-center justify-center">

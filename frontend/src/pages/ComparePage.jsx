@@ -5,6 +5,7 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, clearCompare, getCompareItems, removeFromCompare } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 function money(value) {
   return `${Number(value || 0).toLocaleString('vi-VN')}đ`
@@ -38,7 +39,6 @@ export default function ComparePage() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [busyId, setBusyId] = useState(null)
 
   useEffect(() => {
@@ -54,12 +54,12 @@ export default function ComparePage() {
 
   const removeItem = async (item) => {
     setBusyId(item.productId)
-    setNotice('')
     try {
       await removeFromCompare(item.productId)
       setItems((current) => current.filter((saved) => saved.productId !== item.productId))
+      showToast('Đã bỏ thiết bị khỏi danh sách so sánh.', 'success')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -67,12 +67,12 @@ export default function ComparePage() {
 
   const removeAll = async () => {
     setBusyId('all')
-    setNotice('')
     try {
       await clearCompare()
       setItems([])
+      showToast('Đã xóa danh sách so sánh.', 'success')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -80,12 +80,12 @@ export default function ComparePage() {
 
   const rentNow = async (item) => {
     setBusyId(item.productId)
-    setNotice('')
     try {
       await addToCart(item.productId, { ...futureDates(), quantity: 1 })
+      showToast('Đã thêm thiết bị vào giỏ hàng. LensRent giữ chỗ trong 10 phút.', 'success')
       navigate('/cart')
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
       setBusyId(null)
     }
   }
@@ -93,9 +93,9 @@ export default function ComparePage() {
   const columns = Math.max(items.length, 1)
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] text-gray-900">
+    <div className="min-h-screen bg-[#f7f8fa] font-sans text-gray-900">
       <Header />
-      <main className="mx-auto min-h-[560px] max-w-[1120px] px-4 py-7 sm:px-6 lg:px-8">
+      <main className="mx-auto min-h-[560px] max-w-[1280px] px-4 py-7 sm:px-6 lg:px-6">
         <nav className="mb-3 text-sm text-gray-500"><Link className="hover:text-[#ff5500]" to="/">Trang chủ</Link><span className="mx-2">›</span>So sánh thiết bị</nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -108,7 +108,6 @@ export default function ComparePage() {
           </div>
         </div>
 
-        {notice && <p aria-live="polite" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{notice}</p>}
         {loading ? (
           <div className="mt-6 rounded-xl border border-gray-200 bg-white py-16 text-center text-sm text-gray-500">Đang tải thiết bị so sánh…</div>
         ) : error ? (

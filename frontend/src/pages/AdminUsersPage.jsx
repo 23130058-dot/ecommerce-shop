@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import AdminLayout, { AdminIcon } from '../components/admin/AdminLayout.jsx'
-import { getAdminUsers, updateAdminUserStatus } from '../services/adminApi.js'
+import DataTable from '../components/shared/DataTable.jsx'
+import { getAdminUsers, updateAdminUserRole, updateAdminUserStatus } from '../services/adminApi.js'
 
 function StatusBadge({ status }) {
   const active = status === 'active'
@@ -9,8 +10,8 @@ function StatusBadge({ status }) {
 
 function RoleBadge({ role }) {
   const normalized = role?.toUpperCase()
-  const label = normalized === 'OWNER' ? 'Owner' : normalized === 'ADMIN' ? 'Admin' : 'Renter'
-  const tone = normalized === 'OWNER' ? 'bg-violet-50 text-violet-700' : normalized === 'ADMIN' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'
+  const label = normalized === 'ADMIN' ? 'Admin' : 'User'
+  const tone = normalized === 'ADMIN' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'
   return <span className={`rounded-md px-2 py-1 text-[10px] font-medium ${tone}`}>{label}</span>
 }
 
@@ -22,14 +23,15 @@ function mapUser(user) {
     name: user.fullName || 'Chưa cập nhật tên',
     email: user.email,
     phone: user.phone || '—',
-    role: user.role || 'RENTER',
+    role: user.role || 'USER',
     joined: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleDateString('vi-VN') : '—',
     rentals: Number(user.rentalCount) || 0,
     status: user.status?.toUpperCase() === 'ACTIVE' ? 'active' : 'locked',
   }
 }
 
-function DetailModal({ user, onClose }) {
+function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
+  const [role, setRole] = useState(user?.role || 'USER')
   if (!user) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -42,11 +44,13 @@ function DetailModal({ user, onClose }) {
           <dt className="text-gray-500">Mã người dùng</dt><dd className="font-semibold text-gray-800">{user.code}</dd>
           <dt className="text-gray-500">Email</dt><dd className="break-all font-medium text-gray-800">{user.email}</dd>
           <dt className="text-gray-500">Số điện thoại</dt><dd className="font-medium text-gray-800">{user.phone}</dd>
-          <dt className="text-gray-500">Vai trò</dt><dd><RoleBadge role={user.role} /></dd>
+          <dt className="text-gray-500">Vai trò</dt><dd className="flex flex-wrap items-center gap-2"><RoleBadge role={user.role} /><select aria-label="Vai trò mới" value={role.toUpperCase()} onChange={(event) => setRole(event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-orange-400"><option value="USER">User</option><option value="ADMIN">Admin</option></select><button type="button" disabled={savingRole || role.toUpperCase() === user.role.toUpperCase()} onClick={async () => { const updated = await onRoleChange(user, role); if (updated) setRole(updated.role) }} className="rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50">{savingRole ? 'Đang lưu…' : 'Lưu vai trò'}</button></dd>
           <dt className="text-gray-500">Ngày tham gia</dt><dd className="font-medium text-gray-800">{user.joined}</dd>
           <dt className="text-gray-500">Đơn thuê</dt><dd className="font-medium text-gray-800">{user.rentals}</dd>
           <dt className="text-gray-500">Trạng thái</dt><dd><StatusBadge status={user.status} /></dd>
         </dl>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Vai trò mới có hiệu lực sau khi người dùng đăng nhập lại. Không thể tự đổi quyền tài khoản Admin đang sử dụng.</p>
+        {roleError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{roleError}</p>}
         <div className="mt-5 flex justify-end"><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Đóng</button></div>
       </section>
     </div>
@@ -76,6 +80,8 @@ export default function AdminUsersPage() {
   const [pageCount, setPageCount] = useState(1)
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState(null)
+  const [savingRole, setSavingRole] = useState(false)
+  const [roleError, setRoleError] = useState('')
   const [error, setError] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
   const pageSize = 10
@@ -132,7 +138,34 @@ export default function AdminUsersPage() {
     }
   }
 
+  const changeRole = async (user, role) => {
+    setSavingRole(true)
+    setRoleError('')
+    setError('')
+    try {
+      const response = await updateAdminUserRole(user.id, role)
+      const updatedUser = mapUser(response)
+      setSelectedUser(updatedUser)
+      setUsers((current) => current.map((item) => item.id === user.id ? updatedUser : item))
+      setRefreshVersion((current) => current + 1)
+      return updatedUser
+    } catch (requestError) {
+      setRoleError(requestError.message)
+      return null
+    } finally {
+      setSavingRole(false)
+    }
+  }
+
   const visibleUsers = users
+  const columns = [
+    { key: 'name', header: 'Người dùng', className: 'min-w-[220px]', render: (user) => <div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[11px] font-bold text-[#e94b0a]">{user.name.split(' ').slice(-2).map((part) => part[0]).join('')}</span><div className="min-w-0"><p className="text-xs font-semibold text-gray-800">{user.name}</p><p className="mt-0.5 text-[11px] text-gray-400">{user.email}</p><p className="mt-0.5 text-[10px] text-gray-300">{user.code}</p></div></div> },
+    { key: 'role', header: 'Vai trò', render: (user) => <RoleBadge role={user.role} /> },
+    { key: 'joined', header: 'Ngày tham gia', className: 'whitespace-nowrap' },
+    { key: 'rentals', header: 'Đơn thuê' },
+    { key: 'status', header: 'Trạng thái', render: (user) => <StatusBadge status={user.status} /> },
+    { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[210px] whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap text-right', render: (user) => <div className="flex flex-nowrap items-center justify-end gap-2"><button type="button" onClick={() => setSelectedUser(user)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"><AdminIcon name="eye" className="size-3.5" />Chi tiết</button><button type="button" disabled={updatingId === user.id} onClick={() => toggleStatus(user)} className={`whitespace-nowrap rounded-md border px-2.5 py-1.5 text-[10px] font-semibold disabled:cursor-wait disabled:opacity-50 ${user.status === 'active' ? 'border-rose-100 text-rose-600 hover:bg-rose-50' : 'border-emerald-100 text-emerald-700 hover:bg-emerald-50'}`}>{updatingId === user.id ? 'Đang lưu…' : user.status === 'active' ? 'Khóa' : 'Mở khóa'}</button></div> },
+  ]
 
   return (
     <AdminLayout>
@@ -151,36 +184,22 @@ export default function AdminUsersPage() {
           <article className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-[10px] font-bold tracking-wide text-gray-500">TÀI KHOẢN ĐÃ KHÓA</p><p className="mt-2 text-2xl font-bold text-gray-800">{summary?.lockedUsers ?? '—'}</p><p className="mt-1 text-[10px] text-rose-600">Không thể đăng nhập khi bị khóa</p></article>
         </section>
 
-        <section className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
-          {error && <div role="alert" className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-[11px] text-rose-700">{error}</div>}
-          <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <section className="mt-4 space-y-3">
+          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div><h2 className="text-[13px] font-bold text-gray-800">Danh sách tài khoản</h2><p className="mt-1 text-[10px] text-gray-400">Tra cứu và cập nhật trạng thái người dùng từ PostgreSQL</p></div>
             <label className="flex h-9 w-full items-center gap-2 rounded-lg border border-gray-200 px-3 text-gray-400 focus-within:border-orange-400 sm:max-w-[290px]"><AdminIcon name="search" className="size-4 shrink-0" /><input value={query} onChange={(event) => changeFilter(setQuery, event.target.value)} placeholder="Tìm tên, email hoặc mã..." aria-label="Tìm người dùng" className="min-w-0 flex-1 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400" /></label>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 sm:px-5">
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Lọc theo trạng thái">
               {[['all', 'Tất cả'], ['active', 'Hoạt động'], ['locked', 'Đã khóa']].map(([value, label]) => <button key={value} onClick={() => changeFilter(setStatusFilter, value)} type="button" aria-pressed={statusFilter === value} className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold ${statusFilter === value ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-500 hover:bg-gray-50'}`}>{label}</button>)}
             </div>
-            <label className="flex items-center gap-2 text-[10px] text-gray-500"><AdminIcon name="filter" className="size-3.5" /><span>Vai trò</span><select value={roleFilter} onChange={(event) => changeFilter(setRoleFilter, event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-700 outline-none focus:border-orange-400"><option value="all">Tất cả</option><option value="renter">Renter</option><option value="owner">Owner</option><option value="admin">Admin</option></select></label>
+            <label className="flex items-center gap-2 text-[10px] text-gray-500"><AdminIcon name="filter" className="size-3.5" /><span>Vai trò</span><select value={roleFilter} onChange={(event) => changeFilter(setRoleFilter, event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-700 outline-none focus:border-orange-400"><option value="all">Tất cả</option><option value="user">User</option><option value="admin">Admin</option></select></label>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left">
-              <thead><tr className="bg-gray-50/80 text-[9px] font-bold uppercase tracking-[0.06em] text-gray-500"><th className="px-5 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Ngày tham gia</th><th className="px-4 py-3">Đơn thuê</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3 text-right">Thao tác</th></tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {visibleUsers.map((user) => <tr key={user.id} className="transition hover:bg-gray-50/70">
-                  <td className="px-5 py-3.5"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[11px] font-bold text-[#e94b0a]">{user.name.split(' ').slice(-2).map((part) => part[0]).join('')}</span><div className="min-w-0"><p className="text-[11px] font-semibold text-gray-800">{user.name}</p><p className="mt-0.5 text-[10px] text-gray-400">{user.email}</p><p className="mt-0.5 text-[9px] text-gray-300">{user.code}</p></div></div></td>
-                  <td className="px-4 py-3.5"><RoleBadge role={user.role} /></td><td className="px-4 py-3.5 text-[10px] text-gray-600">{user.joined}</td><td className="px-4 py-3.5 text-[10px] font-medium text-gray-700">{user.rentals}</td><td className="px-4 py-3.5"><StatusBadge status={user.status} /></td>
-                  <td className="px-4 py-3.5"><div className="flex items-center justify-end gap-2"><button type="button" onClick={() => setSelectedUser(user)} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"><AdminIcon name="eye" className="size-3.5" />Chi tiết</button><button type="button" disabled={updatingId === user.id} onClick={() => toggleStatus(user)} className={`rounded-md border px-2.5 py-1.5 text-[10px] font-semibold disabled:cursor-wait disabled:opacity-50 ${user.status === 'active' ? 'border-rose-100 text-rose-600 hover:bg-rose-50' : 'border-emerald-100 text-emerald-700 hover:bg-emerald-50'}`}>{updatingId === user.id ? 'Đang lưu…' : user.status === 'active' ? 'Khóa' : 'Mở khóa'}</button></div></td>
-                </tr>)}
-                {visibleUsers.length === 0 && <tr><td colSpan="6" className="px-5 py-12 text-center text-xs text-gray-400">{loading ? 'Đang tải danh sách người dùng…' : 'Không tìm thấy tài khoản phù hợp.'}</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"><p className="text-[10px] text-gray-500">Hiển thị {totalElements ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, totalElements)} trong {totalElements} người dùng</p><div className="flex items-center gap-1"><button type="button" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)} className="rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] text-gray-600 disabled:cursor-not-allowed disabled:opacity-40">Trước</button>{Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => <button key={number} type="button" onClick={() => setPage(number)} aria-current={page === number ? 'page' : undefined} className={`size-7 rounded-md text-[10px] font-semibold ${page === number ? 'bg-[#f45116] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>{number}</button>)}<button type="button" disabled={page >= pageCount || loading} onClick={() => setPage((current) => current + 1)} className="rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] text-gray-600 disabled:cursor-not-allowed disabled:opacity-40">Tiếp</button></div></div>
+          <DataTable columns={columns} rows={visibleUsers} rowKey={(user) => user.id} loading={loading} error={error} emptyMessage="Không tìm thấy tài khoản phù hợp." page={page - 1} pageCount={pageCount} totalElements={totalElements} size={pageSize} onPageChange={(nextPage) => setPage(nextPage + 1)} />
         </section>
         <p className="mb-1 mt-4 text-center text-[10px] text-gray-400">Dữ liệu người dùng và thao tác trạng thái được lấy từ PostgreSQL.</p>
       </main>
-      <DetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />
+      <DetailModal key={selectedUser?.id || 'closed'} user={selectedUser} savingRole={savingRole} roleError={roleError} onRoleChange={changeRole} onClose={() => setSelectedUser(null)} />
     </AdminLayout>
   )
 }

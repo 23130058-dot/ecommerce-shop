@@ -1,528 +1,69 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { products, categories } from '../../data/products'
+import { getOwnerSchedules, saveOwnerSchedule } from '../../services/ownerApi.js'
+import { resolveProductImage } from '../home/productImageMap.js'
+
+const money = (value) => Number(value || 0).toLocaleString('vi-VN')
 
 export default function ScheduleSettings() {
-    const [selectedProduct, setSelectedProduct] = useState(products[0])
-
-    const [price, setPrice] = useState(products[0]?.price || 0)
-
-    const [weekendPrice, setWeekendPrice] = useState(
-        Math.round((products[0]?.price || 0) * 1.2)
-    )
-
-    const [deposit, setDeposit] = useState(
-        (products[0]?.price || 0) * 3
-    )
-
-    const [blockedDates, setBlockedDates] = useState([
-        '2026-10-10',
-        '2026-10-20',
-    ])
-
-    const [newBlockedDate, setNewBlockedDate] = useState('')
-
-    const [available, setAvailable] = useState(true)
-
-    const handleProductChange = (e) => {
-        const product = products.find(
-            (_, index) => String(index) === e.target.value
-        )
-
-        if (!product) return
-
-        setSelectedProduct(product)
-
-        setPrice(product.price)
-
-        setWeekendPrice(
-            Math.round(product.price * 1.2)
-        )
-
-        setDeposit(product.price * 3)
-    }
-
-    const addBlockedDate = () => {
-        if (!newBlockedDate) return
-
-        if (blockedDates.includes(newBlockedDate)) {
-            alert('Ngày này đã có trong danh sách.')
-            return
-        }
-
-        setBlockedDates([
-            ...blockedDates,
-            newBlockedDate,
-        ])
-
-        setNewBlockedDate('')
-    }
-
-    const removeBlockedDate = (date) => {
-        setBlockedDates(
-            blockedDates.filter(
-                (item) => item !== date
-            )
-        )
-    }
-
-    const handleSave = () => {
-        const data = {
-            product: selectedProduct.name,
-            price,
-            weekendPrice,
-            deposit,
-            available,
-            blockedDates,
-        }
-
-        console.log('Schedule settings:', data)
-
-        alert('Đã lưu thiết lập lịch và giá!')
-    }
-
-    return (
-        <div className="min-h-screen bg-[#f7f8fa] p-6">
-
-            {/* Breadcrumb */}
-            <div className="mb-5 text-sm text-gray-500">
-
-                Quản lý cho thuê
-
-                <span className="mx-2">
-          /
-        </span>
-
-                <span className="text-gray-800">
-          Thiết lập lịch và giá
-        </span>
-
-            </div>
-
-            {/* Header */}
-            <div className="mb-6">
-
-                <h1 className="text-2xl font-semibold text-[#172033]">
-                    Thiết lập lịch và giá
-                </h1>
-
-                <p className="mt-1 text-sm text-gray-500">
-                    Thiết lập giá thuê và thời gian nhận đơn cho thiết bị
-                </p>
-
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-
-                {/* Left */}
-                <div className="xl:col-span-2">
-
-                    {/* Select product */}
-                    <div className="rounded-xl border border-gray-200 bg-white p-6">
-
-                        <h2 className="mb-5 text-lg font-semibold text-[#172033]">
-                            Chọn thiết bị
-                        </h2>
-
-                        <select
-                            value={products.findIndex(
-                                (item) => item.name === selectedProduct.name
-                            )}
-                            onChange={handleProductChange}
-                            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"
-                        >
-
-                            {products.map((product, index) => (
-
-                                <option
-                                    key={product.name}
-                                    value={index}
-                                >
-                                    {product.name}
-                                </option>
-
-                            ))}
-
-                        </select>
-
-                        {/* Product preview */}
-                        <div className="mt-5 flex items-center gap-4 rounded-xl bg-gray-50 p-4">
-
-                            <div className="flex h-20 w-24 items-center justify-center rounded-lg bg-white">
-
-                                <img
-                                    src={selectedProduct.image}
-                                    alt={selectedProduct.name}
-                                    className="h-full w-full object-contain"
-                                />
-
-                            </div>
-
-                            <div>
-
-                                <h3 className="font-medium text-[#172033]">
-                                    {selectedProduct.name}
-                                </h3>
-
-                                <p className="mt-1 text-xs text-gray-500">
-                                    {selectedProduct.type}
-                                </p>
-
-                                <p className="mt-2 text-sm text-[#F45116]">
-                                    {selectedProduct.price.toLocaleString('vi-VN')} đ/ngày
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    {/* Pricing */}
-                    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
-
-                        <h2 className="mb-5 text-lg font-semibold text-[#172033]">
-                            Giá thuê
-                        </h2>
-
-                        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-
-                            <div>
-
-                                <label className="mb-2 block text-sm font-medium text-gray-700">
-                                    Giá ngày thường
-                                </label>
-
-                                <div className="relative">
-
-                                    <input
-                                        type="number"
-                                        value={price}
-                                        onChange={(e) =>
-                                            setPrice(Number(e.target.value))
-                                        }
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 pr-10 text-sm outline-none focus:border-[#F45116]"
-                                    />
-
-                                    <span className="absolute right-4 top-3 text-sm text-gray-400">
-                    đ
-                  </span>
-
-                                </div>
-
-                            </div>
-
-                            <div>
-
-                                <label className="mb-2 block text-sm font-medium text-gray-700">
-                                    Giá cuối tuần
-                                </label>
-
-                                <div className="relative">
-
-                                    <input
-                                        type="number"
-                                        value={weekendPrice}
-                                        onChange={(e) =>
-                                            setWeekendPrice(
-                                                Number(e.target.value)
-                                            )
-                                        }
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 pr-10 text-sm outline-none focus:border-[#F45116]"
-                                    />
-
-                                    <span className="absolute right-4 top-3 text-sm text-gray-400">
-                    đ
-                  </span>
-
-                                </div>
-
-                            </div>
-
-                            <div>
-
-                                <label className="mb-2 block text-sm font-medium text-gray-700">
-                                    Tiền đặt cọc
-                                </label>
-
-                                <div className="relative">
-
-                                    <input
-                                        type="number"
-                                        value={deposit}
-                                        onChange={(e) =>
-                                            setDeposit(
-                                                Number(e.target.value)
-                                            )
-                                        }
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 pr-10 text-sm outline-none focus:border-[#F45116]"
-                                    />
-
-                                    <span className="absolute right-4 top-3 text-sm text-gray-400">
-                    đ
-                  </span>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    {/* Availability */}
-                    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
-
-                        <div className="flex items-center justify-between">
-
-                            <div>
-
-                                <h2 className="text-lg font-semibold text-[#172033]">
-                                    Cho phép nhận đơn
-                                </h2>
-
-                                <p className="mt-1 text-sm text-gray-500">
-                                    Cho phép khách hàng đặt thiết bị này
-                                </p>
-
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setAvailable(!available)
-                                }
-                                className={`relative h-7 w-12 rounded-full transition ${
-                                    available
-                                        ? 'bg-[#F45116]'
-                                        : 'bg-gray-300'
-                                }`}
-                            >
-
-                <span
-                    className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                        available
-                            ? 'left-6'
-                            : 'left-1'
-                    }`}
-                />
-
-                            </button>
-
-                        </div>
-
-                    </div>
-
-                    {/* Block dates */}
-                    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
-
-                        <h2 className="mb-2 text-lg font-semibold text-[#172033]">
-                            Ngày không nhận đơn
-                        </h2>
-
-                        <p className="mb-5 text-sm text-gray-500">
-                            Chọn những ngày thiết bị không thể cho thuê.
-                        </p>
-
-                        <div className="flex flex-col gap-3 sm:flex-row">
-
-                            <input
-                                type="date"
-                                value={newBlockedDate}
-                                onChange={(e) =>
-                                    setNewBlockedDate(e.target.value)
-                                }
-                                className="rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"
-                            />
-
-                            <button
-                                type="button"
-                                onClick={addBlockedDate}
-                                className="rounded-lg border border-[#F45116] px-5 py-3 text-sm font-medium text-[#F45116] hover:bg-orange-50"
-                            >
-                                + Thêm ngày
-                            </button>
-
-                        </div>
-
-                        <div className="mt-5 space-y-2">
-
-                            {blockedDates.map((date) => (
-
-                                <div
-                                    key={date}
-                                    className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3"
-                                >
-
-                  <span className="text-sm text-gray-700">
-                    {new Date(
-                        `${date}T00:00:00`
-                    ).toLocaleDateString('vi-VN')}
-                  </span>
-
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            removeBlockedDate(date)
-                                        }
-                                        className="text-sm text-red-500 hover:text-red-700"
-                                    >
-                                        Xóa
-                                    </button>
-
-                                </div>
-
-                            ))}
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-                {/* Right */}
-                <div>
-
-                    <div className="rounded-xl border border-gray-200 bg-white p-6">
-
-                        <h2 className="mb-5 text-lg font-semibold text-[#172033]">
-                            Tổng quan
-                        </h2>
-
-                        <div className="space-y-4">
-
-                            <div className="flex justify-between border-b border-gray-100 pb-4">
-
-                <span className="text-sm text-gray-500">
-                  Thiết bị
-                </span>
-
-                                <span className="max-w-[170px] text-right text-sm font-medium text-gray-700">
-                  {selectedProduct.name}
-                </span>
-
-                            </div>
-
-                            <div className="flex justify-between border-b border-gray-100 pb-4">
-
-                <span className="text-sm text-gray-500">
-                  Giá ngày thường
-                </span>
-
-                                <span className="text-sm font-medium text-[#F45116]">
-                  {price.toLocaleString('vi-VN')} đ
-                </span>
-
-                            </div>
-
-                            <div className="flex justify-between border-b border-gray-100 pb-4">
-
-                <span className="text-sm text-gray-500">
-                  Giá cuối tuần
-                </span>
-
-                                <span className="text-sm font-medium text-[#F45116]">
-                  {weekendPrice.toLocaleString('vi-VN')} đ
-                </span>
-
-                            </div>
-
-                            <div className="flex justify-between border-b border-gray-100 pb-4">
-
-                <span className="text-sm text-gray-500">
-                  Tiền cọc
-                </span>
-
-                                <span className="text-sm font-medium text-gray-700">
-                  {deposit.toLocaleString('vi-VN')} đ
-                </span>
-
-                            </div>
-
-                            <div className="flex justify-between">
-
-                <span className="text-sm text-gray-500">
-                  Trạng thái
-                </span>
-
-                                <span
-                                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                        available
-                                            ? 'bg-green-50 text-green-600'
-                                            : 'bg-gray-100 text-gray-500'
-                                    }`}
-                                >
-                  {available
-                      ? 'Đang nhận đơn'
-                      : 'Tạm ngưng'}
-                </span>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    {/* Category */}
-                    <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
-
-                        <h2 className="mb-4 text-lg font-semibold text-[#172033]">
-                            Danh mục
-                        </h2>
-
-                        {categories.map((item) => (
-
-                            <div
-                                key={item.keyword}
-                                className={`mb-2 flex items-center gap-3 rounded-lg p-3 ${
-                                    selectedProduct.category.includes(
-                                        item.keyword
-                                    )
-                                        ? 'bg-orange-50'
-                                        : 'bg-gray-50'
-                                }`}
-                            >
-
-                                <img
-                                    src={item.icon}
-                                    alt={item.name}
-                                    className="h-8 w-8"
-                                />
-
-                                <span className="text-sm text-gray-700">
-                  {item.name}
-                </span>
-
-                            </div>
-
-                        ))}
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            {/* Bottom */}
-            <div className="mt-6 flex justify-end gap-3">
-
-                <Link
-                    to="/owner/equipment"
-                    className="rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                    Hủy
-                </Link>
-
-                <button
-                    type="button"
-                    onClick={handleSave}
-                    className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e]"
-                >
-                    Lưu thiết lập
-                </button>
-
-            </div>
-
-        </div>
-    )
+  const [items, setItems] = useState([])
+  const [productId, setProductId] = useState('')
+  const [form, setForm] = useState({ dailyPrice: '', weekendPrice: '', depositAmount: '', available: true, blockedDates: [] })
+  const [newDate, setNewDate] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const load = async (keepId) => {
+    setLoading(true)
+    try {
+      const rows = await getOwnerSchedules()
+      setItems(rows || [])
+      const selected = (rows || []).find((item) => String(item.productId) === String(keepId)) || rows?.[0]
+      setProductId(selected ? String(selected.productId) : '')
+      if (selected) setForm({ dailyPrice: selected.dailyPrice ?? '', weekendPrice: selected.weekendPrice ?? selected.dailyPrice ?? '', depositAmount: selected.depositAmount ?? '', available: selected.available, blockedDates: selected.blockedDates || [] })
+      setError('')
+    } catch (e) { setError(e.message) } finally { setLoading(false) }
+  }
+
+  useEffect(() => { load('') }, [])
+
+  const selectProduct = (id) => {
+    setProductId(id)
+    const selected = items.find((item) => String(item.productId) === id)
+    if (selected) setForm({ dailyPrice: selected.dailyPrice ?? '', weekendPrice: selected.weekendPrice ?? selected.dailyPrice ?? '', depositAmount: selected.depositAmount ?? '', available: selected.available, blockedDates: selected.blockedDates || [] })
+  }
+
+  const save = async (event) => {
+    event.preventDefault()
+    setSaving(true); setError(''); setNotice('')
+    try {
+      await saveOwnerSchedule(productId, { ...form, dailyPrice: Number(form.dailyPrice), weekendPrice: Number(form.weekendPrice), depositAmount: Number(form.depositAmount) })
+      await load(productId); setNotice('Đã lưu lịch và giá vào hệ thống.')
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+
+  const addBlockedDate = () => {
+    if (!newDate || form.blockedDates.includes(newDate)) return
+    setForm((current) => ({ ...current, blockedDates: [...current.blockedDates, newDate].sort() }))
+    setNewDate('')
+  }
+  const product = items.find((item) => String(item.productId) === productId)
+
+  return <main className="min-h-[60vh] px-2 py-3 sm:px-4">
+    <div className="mb-5"><p className="text-xs text-gray-400">Quản lý cho thuê / Lịch và giá</p><h1 className="mt-2 text-2xl font-bold text-gray-800">Thiết lập lịch và giá</h1><p className="mt-1 text-sm text-gray-500">Lịch chặn và giá cuối tuần được áp dụng khi renter thanh toán.</p></div>
+    {error && <p role="alert" className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}{notice && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+    {loading ? <p className="rounded-xl border bg-white p-6 text-sm text-gray-500">Đang tải thiết bị…</p> : !items.length ? <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">Bạn chưa đăng sản phẩm nào. <Link className="text-orange-600" to="/owner/equipment/add">Đăng thiết bị</Link></div> : <form onSubmit={save} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section className="space-y-5 rounded-xl border border-gray-200 bg-white p-5">
+        <label className="block text-sm font-semibold text-gray-700">Thiết bị<select value={productId} onChange={(e) => selectProduct(e.target.value)} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-3 text-sm">{items.map((item) => <option key={item.productId} value={item.productId}>{item.productName}</option>)}</select></label>
+        {product && <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-3"><img src={resolveProductImage(product.imageKey)} alt="" className="size-16 rounded bg-white object-contain"/><div><p className="font-semibold text-gray-800">{product.productName}</p><p className="mt-1 text-xs text-gray-500">Giá hiện tại: {money(product.dailyPrice)}đ/ngày</p></div></div>}
+        <div className="grid gap-4 sm:grid-cols-3">{[['dailyPrice','Giá ngày thường'],['weekendPrice','Giá cuối tuần'],['depositAmount','Tiền đặt cọc']].map(([key,label]) => <label key={key} className="text-sm font-medium text-gray-600">{label}<input type="number" min="0" required value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm"/></label>)}</div>
+        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.available} onChange={(e) => setForm((f) => ({ ...f, available: e.target.checked }))} className="accent-orange-600"/> Đang nhận lịch thuê</label>
+        <div><h2 className="text-sm font-bold text-gray-800">Ngày không nhận thuê</h2><div className="mt-3 flex gap-2"><input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"/><button type="button" onClick={addBlockedDate} className="rounded-lg border px-4 text-sm font-semibold">Thêm ngày</button></div><div className="mt-3 flex flex-wrap gap-2">{form.blockedDates.map((date) => <span key={date} className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1.5 text-xs text-orange-700">{date}<button type="button" aria-label={`Xóa ngày ${date}`} onClick={() => setForm((f) => ({ ...f, blockedDates: f.blockedDates.filter((item) => item !== date) }))}>×</button></span>)}</div></div>
+        <button disabled={saving} className="rounded-lg bg-[#F45116] px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu thiết lập'}</button>
+      </section>
+      <aside className="h-fit rounded-xl border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-800">Tóm tắt thiết lập</h2><dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><dt className="text-gray-500">Ngày thường</dt><dd>{money(form.dailyPrice)}đ</dd></div><div className="flex justify-between"><dt className="text-gray-500">Cuối tuần</dt><dd>{money(form.weekendPrice)}đ</dd></div><div className="flex justify-between"><dt className="text-gray-500">Đặt cọc</dt><dd>{money(form.depositAmount)}đ</dd></div><div className="flex justify-between"><dt className="text-gray-500">Ngày chặn</dt><dd>{form.blockedDates.length}</dd></div><div className="border-t pt-3"><dt className="text-gray-500">Trạng thái</dt><dd className={form.available ? 'mt-1 font-semibold text-emerald-600' : 'mt-1 font-semibold text-gray-500'}>{form.available ? 'Đang nhận thuê' : 'Tạm ngừng nhận thuê'}</dd></div></dl></aside>
+    </form>}
+  </main>
 }

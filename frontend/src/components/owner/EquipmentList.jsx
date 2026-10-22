@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { categories } from '../../data/products'
 import { resolveProductImage } from '../home/productImageMap.js'
+import DataTable from '../shared/DataTable.jsx'
 import { getOwnerProducts } from '../../services/ownerApi.js'
 
 const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
@@ -42,6 +43,14 @@ export default function EquipmentList() {
 
     const availableCount = equipment.reduce((sum, item) => sum + Number(item.availableQuantity || 0), 0)
     const rentedCount = equipment.reduce((sum, item) => sum + Number(item.currentlyRentedQuantity || 0), 0)
+    const columns = [
+        { key: 'name', header: 'Thiết bị', className: 'min-w-[220px]', render: (item) => <div className="flex items-center gap-3"><div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1"><img src={resolveProductImage(item.imageKey)} alt={item.name} className="max-h-full max-w-full object-contain" /></div><div><p className="font-semibold text-[#172033]">{item.name}</p><p className="mt-1 text-[10px] text-gray-500">{item.brand ? `${item.brand} · ` : ''}{item.type}</p></div></div> },
+        { key: 'categoryName', header: 'Danh mục', render: (item) => item.categoryName || 'Khác' },
+        { key: 'dailyPrice', header: 'Giá thuê', className: 'whitespace-nowrap', render: (item) => <><span className="font-semibold text-[#172033]">{money(item.dailyPrice)}</span><span className="mt-1 block text-[10px] text-gray-400">/ ngày</span></> },
+        { key: 'availableQuantity', header: 'Số lượng', className: 'whitespace-nowrap', render: (item) => <><span className="font-semibold text-green-700">Còn {Number(item.availableQuantity || 0)}</span><span className="ml-2 text-gray-500">· thuê {Number(item.currentlyRentedQuantity || 0)}</span></> },
+        { key: 'status', header: 'Trạng thái', render: (item) => !['ACTIVE'].includes(item.status) ? <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-medium text-gray-600">Tạm ẩn</span> : Number(item.currentlyRentedQuantity) > 0 ? <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="rounded-full bg-green-50 px-3 py-1 text-[10px] font-medium text-green-600">Sẵn sàng</span> },
+        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'whitespace-nowrap text-right', cellClassName: 'text-right', render: (item) => <div className="flex justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-semibold text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="rounded-lg border border-[#F45116] px-3 py-2 text-[10px] font-semibold text-[#F45116] hover:bg-orange-50">Chi tiết</Link></div> },
+    ]
 
     return (
         <div className="min-h-screen bg-[#f7f8fa] p-6">
@@ -70,30 +79,7 @@ export default function EquipmentList() {
                 </div>
             </div>
 
-            {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>}
-            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-                {loading ? <div className="px-5 py-12 text-center text-sm text-gray-500">Đang tải thiết bị…</div> : <div className="overflow-x-auto">
-                    <table className="w-full min-w-[950px]">
-                        <thead><tr className="border-b border-gray-200 bg-gray-50">{['Thiết bị', 'Danh mục', 'Giá thuê', 'Số lượng', 'Trạng thái', 'Thao tác'].map((label) => <th className="px-5 py-4 text-left text-xs font-semibold uppercase text-gray-500" key={label}>{label}</th>)}</tr></thead>
-                        <tbody>
-                            {filteredEquipment.map((item) => {
-                                const available = Number(item.availableQuantity || 0)
-                                const rented = Number(item.currentlyRentedQuantity || 0)
-                                const isActive = item.status === 'ACTIVE'
-                                return <tr key={item.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                                    <td className="px-5 py-4"><div className="flex items-center gap-4"><div className="flex h-16 w-20 items-center justify-center rounded-lg bg-gray-50"><img src={resolveProductImage(item.imageKey)} alt={item.name} className="h-full w-full rounded-lg object-contain" /></div><div><p className="font-medium text-[#172033]">{item.name}</p><p className="mt-1 text-xs text-gray-500">{item.brand ? `${item.brand} · ` : ''}{item.type}</p></div></div></td>
-                                    <td className="px-5 py-4 text-sm text-gray-600">{item.categoryName || 'Khác'}</td>
-                                    <td className="px-5 py-4"><p className="text-sm font-medium text-[#172033]">{money(item.dailyPrice)}</p><p className="text-xs text-gray-400">/ ngày</p></td>
-                                    <td className="px-5 py-4 text-sm"><span className="font-semibold text-green-700">Còn {available}</span><span className="ml-2 text-gray-500">· thuê {rented}</span></td>
-                                    <td className="px-5 py-4">{!isActive ? <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">Tạm ẩn</span> : rented > 0 ? <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-600">Sẵn sàng</span>}</td>
-                                    <td className="px-5 py-4"><div className="flex justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="rounded-lg border border-[#F45116] px-3 py-2 text-xs font-medium text-[#F45116] hover:bg-orange-50">Chi tiết</Link></div></td>
-                                </tr>
-                            })}
-                        </tbody>
-                    </table>
-                </div>}
-                {!loading && !error && filteredEquipment.length === 0 && <div className="py-12 text-center text-sm text-gray-500">{equipment.length ? 'Không tìm thấy thiết bị phù hợp.' : 'Bạn chưa đăng thiết bị nào. Chọn “Thêm thiết bị” để tạo tin cho thuê đầu tiên.'}</div>}
-            </div>
+            <DataTable columns={columns} rows={filteredEquipment} rowKey={(item) => item.id} loading={loading} error={error} searchable={false} emptyMessage={equipment.length ? 'Không tìm thấy thiết bị phù hợp.' : 'Bạn chưa đăng thiết bị nào. Chọn “Thêm thiết bị” để tạo tin cho thuê đầu tiên.'} pageSize={10} />
         </div>
     )
 }

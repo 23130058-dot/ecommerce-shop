@@ -5,21 +5,13 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { changeAccountPassword, getAccountProfile, updateAccountProfile, uploadAccountAvatar } from '../services/accountApi.js'
 import { API_BASE_URL, getStoredAuth, updateStoredUser } from '../services/authApi.js'
+import { getWorkspacePreference, saveWorkspacePreference } from '../services/workspacePreference.js'
 
 const settingsTabs = [
-  { key: 'profile', path: '/renter/profile', label: 'Hồ sơ cá nhân', icon: 'user' },
-  { key: 'security', path: '/renter/profile/security', label: 'Bảo mật', icon: 'shield' },
-  { key: 'payments', path: '/renter/profile/payments', label: 'Thanh toán & Ví', icon: 'wallet' },
-  { key: 'notifications', path: '/renter/profile/notifications', label: 'Thông báo', icon: 'bell' },
-]
-
-const workspaceLinks = [
-  { label: 'Tổng quan', to: '/renter', icon: 'home' },
-  { label: 'Đơn thuê của tôi', to: '/renter/orders', icon: 'calendar' },
-  { label: 'Danh sách yêu thích', to: '/renter/favorites', icon: 'heart' },
-  { label: 'Quản lý ví & Cọc', to: '/renter/profile/payments', icon: 'wallet' },
-  { label: 'Lịch sử giao dịch', to: '/renter/profile/payments', icon: 'card' },
-  { label: 'Thông báo', to: '/renter/profile/notifications', icon: 'bell' },
+  { key: 'profile', path: '/account/settings', label: 'Hồ sơ cá nhân', icon: 'user' },
+  { key: 'security', path: '/account/settings/security', label: 'Bảo mật', icon: 'shield' },
+  { key: 'payments', path: '/account/settings/payments', label: 'Thanh toán & Ví', icon: 'wallet' },
+  { key: 'notifications', path: '/account/settings/notifications', label: 'Thông báo', icon: 'bell' },
 ]
 
 const iconShapes = {
@@ -431,13 +423,27 @@ function NotificationRow({ title, description, checked, onChange }) {
 
 export default function AccountSettingsPage() {
   const location = useLocation()
+  const auth = getStoredAuth()
+  const accountRole = auth?.user?.role?.toUpperCase() || 'USER'
   const [toast, setToast] = useState('')
   const [toastTimer, setToastTimer] = useState(null)
   const [profile, setProfile] = useState(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState('')
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => getWorkspacePreference(auth?.user))
   const tabKey = location.pathname.split('/')[3] || 'profile'
   const activeTab = settingsTabs.find((tab) => tab.key === tabKey) || settingsTabs[0]
+  const isAdmin = accountRole === 'ADMIN'
+  const ownerWorkspaceAvailable = !isAdmin
+  const renterWorkspaceAvailable = !isAdmin
+  const selectedWorkspaceAvailable = Boolean(selectedWorkspace) && !isAdmin
+  const selectedWorkspacePath = selectedWorkspace === 'OWNER' ? '/owner' : selectedWorkspace === 'RENTER' ? '/renter' : '/'
+
+  const selectWorkspace = (workspace) => {
+    if (isAdmin) return
+    setSelectedWorkspace(workspace)
+    saveWorkspacePreference(auth?.user, workspace)
+  }
 
   useEffect(() => {
     let mounted = true
@@ -487,36 +493,58 @@ export default function AccountSettingsPage() {
       <Header />
       <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:py-9">
         <div className="mb-6">
-          <div className="mb-3 flex items-center gap-2 text-xs text-slate-500"><Link className="hover:text-orange-600" to="/">Trang chủ</Link><span>/</span><Link className="hover:text-orange-600" to="/renter">Workspace</Link><span>/</span><span className="font-medium text-slate-700">Cài đặt tài khoản</span></div>
+          <div className="mb-3 flex items-center gap-2 text-xs text-slate-500"><Link className="hover:text-orange-600" to="/">Trang chủ</Link><span>/</span><span className="font-medium text-slate-700">Cài đặt tài khoản</span></div>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-600">Thiết lập tài khoản</p><h1 className="mt-1.5 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-[30px]">Cài đặt tài khoản</h1><p className="mt-2 text-sm text-slate-500">Quản lý thông tin cá nhân, bảo mật và phương thức thanh toán.</p></div>
-            <Link className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-200 hover:text-orange-600" to="/renter"><Icon name="arrow" size={16} className="rotate-180" /> Quay lại Workspace</Link>
+            <Link className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-orange-200 hover:text-orange-600" to={isAdmin ? '/admin' : selectedWorkspaceAvailable ? selectedWorkspacePath : '#workspace-selector'}><Icon name="arrow" size={16} className="rotate-180" /> {isAdmin ? 'Mở khu vực Admin' : selectedWorkspaceAvailable ? `Mở không gian ${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'}` : 'Chọn workspace'}</Link>
           </div>
         </div>
 
         <div className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)] xl:gap-6">
           <aside className="space-y-4 lg:sticky lg:top-5">
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                <img alt="" className="size-12 rounded-full object-cover" src={avatarSource(profile?.avatarUrl)} />
-                <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{profile?.fullName || getStoredAuth()?.user?.fullName || 'Tài khoản LensRent'}</p><p className="mt-0.5 truncate text-xs text-slate-500">Người thuê LensRent</p></div>
+            <section id="workspace-selector" className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+                <img alt="" className="size-12 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm" src={avatarSource(profile?.avatarUrl)} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-900">{profile?.fullName || auth?.user?.fullName || 'Tài khoản LensRent'}</p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Vai trò tài khoản</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-semibold text-slate-700">{isAdmin ? 'Admin' : 'User'}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isAdmin ? 'bg-orange-50 text-orange-700' : selectedWorkspace ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                      <span className={`size-1.5 rounded-full ${isAdmin ? 'bg-orange-500' : selectedWorkspace ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                      {isAdmin ? 'Quản trị viên' : selectedWorkspace ? `${selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'} đang chọn` : 'Chưa chọn workspace'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <p className="px-2 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.13em] text-slate-400">Workspace</p>
-              <nav aria-label="Điều hướng Workspace" className="space-y-1">
-                {workspaceLinks.map((item) => (
-                  <NavLink key={item.label} to={item.to} className={({ isActive }) => `flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-[13px] font-medium transition ${isActive && item.to !== '/renter' ? 'bg-orange-50 text-orange-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}><Icon name={item.icon} size={17} /><span className="flex-1">{item.label}</span>{item.label === 'Đơn thuê của tôi' && <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">2</span>}</NavLink>
-                ))}
-              </nav>
-              <div className="my-3 border-t border-slate-100" />
-              <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-[0.13em] text-slate-400">Tài khoản</p>
-              <NavLink className={({ isActive }) => `flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-[13px] font-semibold transition ${isActive ? 'bg-orange-50 text-orange-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`} to="/renter/profile"><Icon name="settings" size={17} /><span>Cài đặt tài khoản</span></NavLink>
+
+              {!isAdmin ? <div className="mt-5">
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-slate-400">Chọn không gian</p>
+                  <span className="text-[10px] text-slate-400">Chọn một workspace</span>
+                </div>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  {['OWNER', 'RENTER'].map((workspace) => {
+                    const active = selectedWorkspace === workspace
+                    const available = workspace === 'OWNER' ? ownerWorkspaceAvailable : renterWorkspaceAvailable
+                    return <button key={workspace} type="button" onClick={() => selectWorkspace(workspace)} aria-pressed={active} className={`group min-h-[88px] rounded-xl border p-3 text-left transition ${active ? 'border-orange-300 bg-orange-50 shadow-sm ring-2 ring-orange-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className={`flex size-8 items-center justify-center rounded-lg text-xs font-extrabold ${active ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-white'}`}>{workspace === 'OWNER' ? 'O' : 'R'}</span>
+                        <span aria-hidden="true" className={`flex size-5 items-center justify-center rounded-full text-[11px] font-bold ${active ? 'bg-orange-500 text-white' : 'border border-slate-200 text-transparent'}`}>✓</span>
+                      </span>
+                      <span className="mt-2 block text-xs font-bold text-slate-800">{workspace === 'OWNER' ? 'Owner' : 'Renter'}</span>
+                      <span className={`mt-0.5 block text-[10px] font-semibold ${active ? (available ? 'text-emerald-700' : 'text-slate-500') : (available ? 'text-slate-400' : 'text-slate-400')}`}>
+                        {active ? 'Đang chọn' : 'Nhấn để chọn'}
+                      </span>
+                    </button>
+                  })}
+                </div>
+                <p className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-[11px] leading-5 text-slate-600">{selectedWorkspace === 'OWNER' ? 'Quản lý thiết bị cho thuê, đơn hàng và doanh thu của bạn.' : selectedWorkspace === 'RENTER' ? 'Tìm thiết bị, quản lý giỏ hàng và theo dõi đơn thuê.' : 'Chọn Owner để quản lý thiết bị cho thuê hoặc Renter để tìm và thuê thiết bị.'}</p>
+                {selectedWorkspaceAvailable
+                  ? <Link className="mt-3 flex min-h-10 items-center justify-center rounded-lg bg-orange-500 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-orange-600" to={selectedWorkspacePath}>Mở không gian {selectedWorkspace === 'OWNER' ? 'Owner' : 'Renter'} <span aria-hidden="true" className="ml-1">→</span></Link>
+                  : <span className="mt-3 block text-center text-[11px] text-slate-400">Chọn Owner hoặc Renter để mở workspace đã chọn.</span>}
+              </div> : <div className="mt-4 rounded-xl bg-orange-50 px-3 py-3 text-xs leading-5 text-orange-800">Tài khoản Admin quản lý hệ thống tại khu vực quản trị.</div>}
             </section>
-            <section className="rounded-xl border border-orange-100 bg-orange-50/70 p-4">
-              <div className="flex items-center gap-2 text-orange-700"><Icon name="help" size={18} /><p className="text-sm font-bold text-slate-800">Bạn cần hỗ trợ?</p></div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">Đội ngũ LensRent luôn sẵn sàng giúp bạn quản lý tài khoản.</p>
-              <a className="mt-3 inline-flex text-xs font-bold text-orange-700 hover:underline" href="mailto:support@lensrent.vn">Liên hệ hỗ trợ →</a>
-            </section>
-            <Link className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-orange-200 hover:text-orange-700" to="/owner"><Icon name="camera" size={17} /> Chuyển sang Owner</Link>
           </aside>
 
           <section className="min-w-0">

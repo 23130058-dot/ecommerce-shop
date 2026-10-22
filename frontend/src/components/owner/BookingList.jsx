@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import OwnerIcon from './OwnerIcon'
-import { completeOwnerBooking, confirmOwnerBooking, getOwnerBookings } from '../../services/ownerApi.js'
+import DataTable from '../shared/DataTable.jsx'
+import { cancelOwnerBooking, completeOwnerBooking, confirmOwnerBooking, getOwnerBookings } from '../../services/ownerApi.js'
 
 const formatMoney = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0)) + ' đ'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`)) : '—'
@@ -58,10 +59,36 @@ export default function BookingList() {
         }
     }
 
+    const cancel = async (rentalId) => {
+        if (!window.confirm('Hủy sản phẩm của bạn trong đơn thuê này? Nếu đơn có sản phẩm Owner khác, các sản phẩm đó vẫn được giữ.')) return
+        setBusyId(rentalId); setError('')
+        try {
+            await cancelOwnerBooking(rentalId)
+            const items = await getOwnerBookings()
+            setBookings(Array.isArray(items) ? items : [])
+        } catch (actionError) { setError(actionError.message) } finally { setBusyId(null) }
+    }
+
     const statusClass = (status) => status === 'PENDING' ? 'bg-orange-50 text-orange-600'
         : ['ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(status) ? 'bg-blue-50 text-blue-600'
             : status === 'CANCELLED' || status === 'CANCELED' ? 'bg-gray-100 text-gray-600'
                 : 'bg-green-50 text-green-600'
+
+    const columns = [
+        { key: 'rentalCode', header: 'Đơn thuê', className: 'whitespace-nowrap', render: (booking) => <span className="font-semibold text-gray-900">#{booking.rentalCode}</span> },
+        { key: 'renterName', header: 'Khách thuê', render: (booking) => <><p className="font-medium text-gray-800">{booking.renterName}</p><p className="mt-1 text-[10px] text-gray-400">{booking.renterPhone || 'Chưa có số điện thoại'}</p></> },
+        { key: 'productNames', header: 'Thiết bị', className: 'min-w-[180px]' },
+        { key: 'startDate', header: 'Thời gian', className: 'whitespace-nowrap', render: (booking) => <span>{formatDate(booking.startDate)} – {formatDate(booking.endDate)}</span> },
+        { key: 'rentalAmount', header: 'Tổng tiền thuê', className: 'whitespace-nowrap', render: (booking) => <span className="font-semibold">{formatMoney(Number(booking.rentalAmount || 0) + Number(booking.depositAmount || 0))}</span> },
+        { key: 'status', header: 'Trạng thái', render: (booking) => <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusClass(booking.status)}`}>{statusLabels[booking.status] || booking.status}</span> },
+        { key: 'paymentStatus', header: 'Thanh toán', render: (booking) => <span className={booking.paymentStatus === 'PAID' ? 'font-semibold text-emerald-600' : 'text-gray-500'}>{booking.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}</span> },
+        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[150px]', render: (booking) => <div className="flex flex-col items-start gap-1.5">
+            {booking.status === 'PENDING' && <button disabled={busyId === booking.rentalId} onClick={() => confirm(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg bg-[#F45116] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#df450f] disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận đơn'}</button>}
+            {['CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(booking.status) && <button disabled={busyId === booking.rentalId} onClick={() => complete(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-emerald-200 px-3 py-2 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Đã trả thiết bị'}</button>}
+            {['PENDING','CONFIRMED'].includes(booking.status) && booking.startDate > new Date().toISOString().slice(0,10) && <button disabled={busyId === booking.rentalId} onClick={() => cancel(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60">Hủy sản phẩm</button>}
+            {!['PENDING','CONFIRMED','ACTIVE','IN_PROGRESS','RENTING'].includes(booking.status) && <span className="text-xs text-gray-400">—</span>}
+        </div> },
+    ]
 
     return <div className="min-h-[calc(100vh-68px)] px-6 py-7 lg:px-8">
         <div className="mx-auto max-w-[1180px]">
@@ -84,25 +111,7 @@ export default function BookingList() {
                 {[['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['confirmed', 'Đã xác nhận'], ['renting', 'Đang thuê']].map(([key, label]) => <button key={key} type="button" onClick={() => setTab(key)} className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm ${tab === key ? 'border-[#F45116] font-semibold text-[#F45116]' : 'border-transparent text-gray-500'}`}>{label}</button>)}
             </div></div>
 
-            {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>}
-            <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                {loading ? <div className="px-5 py-12 text-center text-sm text-gray-500">Đang tải đơn thuê…</div> : <div className="overflow-x-auto">
-                    <table className="w-full min-w-[950px] text-left">
-                        <thead className="border-b border-gray-200 bg-gray-50"><tr className="text-xs font-semibold uppercase text-gray-500">{['Đơn thuê', 'Khách thuê', 'Thiết bị', 'Thời gian', 'Tổng tiền thuê', 'Trạng thái', 'Thanh toán', ''].map((heading) => <th className="px-4 py-3" key={heading}>{heading}</th>)}</tr></thead>
-                        <tbody className="divide-y divide-gray-100">{filteredBookings.map((booking) => <tr key={booking.rentalId} className="text-sm text-gray-700">
-                            <td className="px-4 py-4 font-semibold text-gray-900">#{booking.rentalCode}</td>
-                            <td className="px-4 py-4"><p className="font-medium text-gray-800">{booking.renterName}</p><p className="mt-1 text-xs text-gray-400">{booking.renterPhone || 'Chưa có số điện thoại'}</p></td>
-                            <td className="max-w-[220px] px-4 py-4">{booking.productNames}</td>
-                            <td className="whitespace-nowrap px-4 py-4 text-gray-500">{formatDate(booking.startDate)}<br />→ {formatDate(booking.endDate)}</td>
-                            <td className="whitespace-nowrap px-4 py-4 font-semibold">{formatMoney(Number(booking.rentalAmount || 0) + Number(booking.depositAmount || 0))}</td>
-                            <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(booking.status)}`}>{statusLabels[booking.status] || booking.status}</span></td>
-                            <td className="px-4 py-4"><span className={booking.paymentStatus === 'PAID' ? 'font-semibold text-emerald-600' : 'text-gray-500'}>{booking.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}</span></td>
-                            <td className="px-4 py-4">{booking.status === 'PENDING' ? <button disabled={busyId === booking.rentalId} onClick={() => confirm(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg bg-[#F45116] px-3 py-2 text-xs font-semibold text-white hover:bg-[#df450f] disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận đơn'}</button> : ['CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(booking.status) ? <button disabled={busyId === booking.rentalId} onClick={() => complete(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Đã trả thiết bị'}</button> : <span className="text-xs text-gray-400">—</span>}</td>
-                        </tr>)}</tbody>
-                    </table>
-                </div>}
-                {!loading && !error && filteredBookings.length === 0 && <div className="px-5 py-12 text-center text-sm text-gray-500">{bookings.length ? 'Không có đơn trong trạng thái này.' : 'Các đơn khách thuê thiết bị của bạn sẽ hiển thị tại đây.'}</div>}
-            </div>
+            <div className="mt-5"><DataTable columns={columns} rows={filteredBookings} rowKey={(booking) => booking.rentalId} loading={loading} error={error} searchable searchPlaceholder="Tìm mã đơn, khách thuê, thiết bị…" emptyMessage={bookings.length ? 'Không có đơn trong trạng thái này.' : 'Các đơn khách thuê thiết bị của bạn sẽ hiển thị tại đây.'} pageSize={10} /></div>
         </div>
     </div>
 }

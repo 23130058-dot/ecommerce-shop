@@ -5,6 +5,7 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { clearCart, getCart, removeCartItem, updateCartItem } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 function money(value) {
   return `${Number(value || 0).toLocaleString('vi-VN')}đ`
@@ -31,7 +32,6 @@ export default function CartPage() {
   const [cart, setCart] = useState({ items: [], rentalTotal: 0, depositTotal: 0, serviceFee: 0, total: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [coupon, setCoupon] = useState('')
 
@@ -50,7 +50,6 @@ export default function CartPage() {
     const startDate = changes.startDate ?? item.startDate ?? ''
     const endDate = changes.endDate ?? item.endDate ?? ''
     setBusyId(item.id)
-    setNotice('')
     try {
       const updated = await updateCartItem(item.id, {
         quantity: changes.quantity ?? item.quantity,
@@ -59,7 +58,7 @@ export default function CartPage() {
       })
       setCart(updated)
     } catch (actionError) {
-      setNotice(actionError.message)
+      showToast(actionError.message, 'error')
     } finally {
       setBusyId(null)
     }
@@ -67,17 +66,15 @@ export default function CartPage() {
 
   const deleteItem = async (item) => {
     setBusyId(item.id)
-    setNotice('')
     try { setCart(await removeCartItem(item.id)) }
-    catch (actionError) { setNotice(actionError.message) }
+    catch (actionError) { showToast(actionError.message, 'error') }
     finally { setBusyId(null) }
   }
 
   const deleteAll = async () => {
     setBusyId('all')
-    setNotice('')
     try { setCart(await clearCart()) }
-    catch (actionError) { setNotice(actionError.message) }
+    catch (actionError) { showToast(actionError.message, 'error') }
     finally { setBusyId(null) }
   }
 
@@ -92,10 +89,6 @@ export default function CartPage() {
           <h1 className="text-2xl font-bold sm:text-[28px]">Giỏ hàng của bạn</h1>
           <span className="rounded bg-gray-200 px-2 py-1 text-xs font-bold text-gray-700">{itemCount} THIẾT BỊ</span>
         </div>
-        {!loading && cart.items.length > 0 && <p className="mt-2 rounded-lg border border-orange-100 bg-orange-50 px-4 py-2.5 text-sm text-orange-800">Thiết bị được giữ chỗ trong 10 phút sau khi thêm vào giỏ. Nếu chưa thanh toán, số lượng sẽ tự mở lại cho người thuê khác.</p>}
-
-        {notice && <p aria-live="polite" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{notice}</p>}
-
         {loading ? (
           <div className="mt-5 rounded-xl border border-gray-200 bg-white py-16 text-center text-sm text-gray-500">Đang tải giỏ hàng…</div>
         ) : error ? (
@@ -161,7 +154,7 @@ export default function CartPage() {
                 <h2 className="text-base font-bold">Tóm tắt đơn thuê</h2>
                 <div className="mt-4 flex gap-2">
                   <input aria-label="Mã giảm giá" className="h-10 min-w-0 flex-1 rounded-md border border-gray-200 px-3 text-sm outline-none focus:border-[#ff5500]" onChange={(event) => setCoupon(event.target.value)} placeholder="Mã giảm giá (nếu có)" value={coupon} />
-                  <button className="rounded-md border border-red-200 px-3 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-40" disabled={!coupon.trim()} onClick={() => setNotice('Hiện chưa có mã giảm giá áp dụng cho giỏ hàng này.')} type="button">Áp dụng</button>
+                  <button className="rounded-md border border-red-200 px-3 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-40" disabled={!coupon.trim()} onClick={() => showToast('Hiện chưa có mã giảm giá áp dụng cho giỏ hàng này.', 'info')} type="button">Áp dụng</button>
                 </div>
                 <div className="mt-4 space-y-1">
                   <CheckoutRow label={`Tổng tiền thuê (${cart.items.length} mục)`} value={money(cart.rentalTotal)} />

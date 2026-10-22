@@ -10,6 +10,9 @@ import com.example.ecommerceshop.shopping.ShoppingDtos.RenterDashboard;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalDetail;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalSummary;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CurrentRentalItem;
+import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatResponse;
+import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatMessageResponse;
+import com.example.ecommerceshop.shopping.ShoppingDtos.SendRentalChatMessageRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -130,6 +134,37 @@ public class ShoppingController {
     @GetMapping("/rentals/{rentalId}")
     public RentalDetail rental(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {
         return shoppingService.getRental(userId(jwt), rentalId);
+    }
+
+    @PatchMapping("/rentals/{rentalId}/cancel")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancelRental(@AuthenticationPrincipal Jwt jwt,@PathVariable long rentalId) {
+        shoppingService.cancelRental(userId(jwt),rentalId);
+    }
+
+    @PostMapping("/rentals/{rentalId}/return")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void requestReturn(@AuthenticationPrincipal Jwt jwt,@PathVariable long rentalId) {
+        shoppingService.requestReturn(userId(jwt),rentalId);
+    }
+
+    @GetMapping("/rentals/{rentalId}/chats")
+    public List<RentalChatResponse> rentalChats(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {
+        return shoppingService.getRentalChats(userId(jwt), rentalId);
+    }
+
+    @GetMapping("/rentals/{rentalId}/chats/{ownerId}/messages")
+    public List<RentalChatMessageResponse> rentalChatMessages(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable long rentalId, @PathVariable long ownerId) {
+        return shoppingService.getRentalChatMessages(userId(jwt), rentalId, ownerId);
+    }
+
+    @PostMapping("/rentals/{rentalId}/chats/{ownerId}/messages")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RentalChatMessageResponse sendRentalChatMessage(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable long rentalId, @PathVariable long ownerId,
+            @Valid @RequestBody SendRentalChatMessageRequest request) {
+        return shoppingService.sendRentalChatMessage(userId(jwt), rentalId, ownerId, request);
     }
 
     private long userId(Jwt jwt) {

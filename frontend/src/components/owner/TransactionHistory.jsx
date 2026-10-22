@@ -1,161 +1,35 @@
-import { useState } from 'react'
-import { transactions } from '../../data/ownerData'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import DataTable from '../shared/DataTable.jsx'
+import { getOwnerTransactions } from '../../services/ownerApi.js'
+
+const money = (value) => `${Number(value || 0) > 0 ? '+' : ''}${Number(value || 0).toLocaleString('vi-VN')} đ`
+const time = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—'
 
 export default function TransactionHistory() {
-    const [showWithdraw, setShowWithdraw] = useState(false)
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-    const formatMoney = (value) => {
-        const sign = value > 0 ? '+' : ''
-        return sign + value.toLocaleString('vi-VN') + ' đ'
-    }
+  useEffect(() => {
+    const controller = new AbortController()
+    getOwnerTransactions({ signal: controller.signal })
+      .then((rows) => setItems(Array.isArray(rows) ? rows : []))
+      .catch((requestError) => { if (requestError.name !== 'AbortError') setError(requestError.message) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [])
 
-    return (
-        <main className="min-h-screen bg-[#F7F8FA] px-6 py-7">
-            <div className="mx-auto max-w-[1000px]">
+  const columns = [
+    { key: 'title', header: 'Nội dung', className: 'min-w-[220px]', render: (row) => <><p className="font-semibold text-gray-800">{row.title}</p><p className="mt-1 text-[10px] text-gray-500">{row.subtitle}</p></> },
+    { key: 'createdAt', header: 'Thời gian', className: 'whitespace-nowrap', render: (row) => time(row.createdAt) },
+    { key: 'type', header: 'Loại', render: (row) => row.type === 'WITHDRAWAL' ? 'Rút tiền' : 'Thuê thiết bị' },
+    { key: 'amount', header: 'Số tiền', className: 'whitespace-nowrap', render: (row) => <span className={`font-bold ${Number(row.amount) >= 0 ? 'text-emerald-600' : 'text-gray-700'}`}>{money(row.amount)}</span> },
+    { key: 'status', header: 'Trạng thái', render: (row) => <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${row.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{row.status === 'PENDING' ? 'Chờ xử lý' : 'Hoàn tất'}</span> },
+  ]
 
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-[23px] font-bold text-gray-800">
-                            Lịch sử giao dịch
-                        </h1>
-
-                        <p className="mt-1 text-sm text-gray-400">
-                            Theo dõi chi tiết dòng tiền nhận từ đơn thuê.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-
-                    <div className="grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr] bg-[#FAFBFC] px-5 py-4 text-[10px] font-bold uppercase text-gray-400">
-                        <span>Mã giao dịch / Nội dung</span>
-                        <span>Thời gian</span>
-                        <span>Loại giao dịch</span>
-                        <span>Số tiền</span>
-                        <span>Trạng thái</span>
-                    </div>
-
-                    {transactions.map((transaction) => (
-                        <div
-                            key={transaction.id}
-                            className="grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr] items-center border-t border-gray-100 px-5 py-5"
-                        >
-
-                            <div>
-                                <p className="text-xs font-bold text-gray-700">
-                                    {transaction.title}
-                                </p>
-
-                                <p className="mt-1 text-[10px] text-gray-400">
-                                    {transaction.sub}
-                                </p>
-                            </div>
-
-                            <span className="text-xs text-gray-500">
-                {transaction.date}
-              </span>
-
-                            <span>
-                <span
-                    className={`rounded px-2 py-1 text-[10px] font-bold ${
-                        transaction.type === 'Tiền thuê'
-                            ? 'bg-blue-50 text-blue-500'
-                            : 'bg-purple-50 text-purple-500'
-                    }`}
-                >
-                  {transaction.type}
-                </span>
-              </span>
-
-                            <strong
-                                className={`text-xs ${
-                                    transaction.amount > 0
-                                        ? 'text-green-600'
-                                        : 'text-gray-700'
-                                }`}
-                            >
-                                {formatMoney(transaction.amount)}
-                            </strong>
-
-                            <span>
-                <span className="rounded bg-green-50 px-2 py-1 text-[10px] font-bold text-green-600">
-                  {transaction.status}
-                </span>
-              </span>
-
-                        </div>
-                    ))}
-
-                </div>
-
-            </div>
-
-            {/* Withdraw modal */}
-            {showWithdraw && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5">
-
-                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-gray-800">
-                                Rút tiền về ngân hàng
-                            </h2>
-
-                            <button
-                                onClick={() => setShowWithdraw(false)}
-                                className="text-xl text-gray-400"
-                            >
-                                ×
-                            </button>
-                        </div>
-
-                        <p className="mt-1 text-xs text-gray-400">
-                            Tiền sẽ được chuyển về tài khoản ngân hàng đã xác minh.
-                        </p>
-
-                        <div className="mt-5 rounded-lg bg-[#FFF6ED] p-4">
-                            <p className="text-xs text-gray-500">
-                                Số dư khả dụng
-                            </p>
-
-                            <p className="mt-1 text-2xl font-bold text-[#F45116]">
-                                28,450,000 đ
-                            </p>
-                        </div>
-
-                        <label className="mt-5 block text-xs font-bold text-gray-700">
-                            Số tiền muốn rút
-                        </label>
-
-                        <input
-                            placeholder="Nhập số tiền"
-                            className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"
-                        />
-
-                        <div className="mt-4 rounded-lg border border-gray-200 p-4">
-                            <p className="text-xs text-gray-400">
-                                Tài khoản nhận
-                            </p>
-
-                            <p className="mt-1 text-sm font-bold text-gray-700">
-                                MBBank ****8888
-                            </p>
-                        </div>
-
-                        <button
-                            onClick={() => {
-                                setShowWithdraw(false)
-                                alert('Yêu cầu rút tiền đã được gửi.')
-                            }}
-                            className="mt-5 w-full rounded-lg bg-[#F45116] py-3 text-sm font-bold text-white"
-                        >
-                            Xác nhận rút tiền
-                        </button>
-
-                    </div>
-
-                </div>
-            )}
-        </main>
-    )
+  return <main className="px-2 py-3 sm:px-4">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold text-gray-800">Lịch sử giao dịch</h1><p className="mt-1 text-sm text-gray-500">Thu nhập từ đơn đã thanh toán và các yêu cầu rút tiền.</p></div><Link to="/owner/wallet" className="rounded-lg bg-[#F45116] px-4 py-2.5 text-sm font-semibold text-white">Ví Owner</Link></div>
+    <DataTable columns={columns} rows={items} rowKey={(row) => `${row.type}-${row.id}`} loading={loading} error={error} searchable searchPlaceholder="Tìm giao dịch…" emptyMessage="Chưa có giao dịch." pageSize={10} />
+  </main>
 }

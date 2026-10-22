@@ -8,7 +8,8 @@ import RenterPage from './pages/RenterPage.jsx'
 import AccountSettingsPage from './pages/AccountSettingsPage.jsx'
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
-import AdminDevicesPage from './pages/AdminDevicesPage.jsx'
+import AdminProductsPage from './pages/AdminProductsPage.jsx'
+import AdminOrdersPage from './pages/AdminOrdersPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import WishlistPage from './pages/WishlistPage.jsx'
 import ComparePage from './pages/ComparePage.jsx'
@@ -16,6 +17,7 @@ import CartPage from './pages/CartPage.jsx'
 import CheckoutPage from './pages/CheckoutPage.jsx'
 import OrderConfirmationPage from './pages/OrderConfirmationPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
+import ToastViewport from './components/layout/ToastViewport.jsx'
 
 function AdminOnly({ children }) {
   const location = useLocation()
@@ -30,9 +32,16 @@ function CategoryRoute() {
   return <CategoryPage categorySlug={categorySlug} />
 }
 
+function LegacyAccountSettingsRoute() {
+  const location = useLocation()
+  const target = location.pathname.replace(/^\/renter\/profile/, '/account/settings')
+  return <Navigate to={`${target}${location.search}${location.hash}`} replace />
+}
+
 function App() {
   return (
     <BrowserRouter>
+      <ToastViewport />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products/:productId" element={<ProductDetailPage />} />
@@ -46,12 +55,16 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />
         <Route path="/admin/users" element={<AdminOnly><AdminUsersPage /></AdminOnly>} />
-        <Route path="/admin/devices" element={<AdminOnly><AdminDevicesPage /></AdminOnly>} />
+        <Route path="/admin/products" element={<AdminOnly><AdminProductsPage /></AdminOnly>} />
+        <Route path="/admin/devices" element={<Navigate to="/admin/products" replace />} />
+        <Route path="/admin/orders" element={<AdminOnly><AdminOrdersPage /></AdminOnly>} />
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />
-        <Route path="/renter/profile" element={<AccountSettingsPage />} />
-        <Route path="/renter/profile/*" element={<AccountSettingsPage />} />
+        <Route path="/account/settings" element={<AccountSettingsPage />} />
+        <Route path="/account/settings/*" element={<AccountSettingsPage />} />
+        <Route path="/renter/profile" element={<LegacyAccountSettingsRoute />} />
+        <Route path="/renter/profile/*" element={<LegacyAccountSettingsRoute />} />
         <Route path="/renter/orders/:rentalId" element={<OrderConfirmationPage />} />
         <Route path="/renter/*" element={<RenterPage />} />
       </Routes>

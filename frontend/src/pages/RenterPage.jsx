@@ -3,6 +3,7 @@ import { Link, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
+import DataTable from '../components/shared/DataTable.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { getCurrentRentalItems, getRenterDashboard } from '../services/shoppingApi.js'
 
@@ -11,7 +12,6 @@ const navigation = [
   { to: '/renter/orders', label: 'Đơn thuê của tôi', icon: '▤' },
   { to: '/wishlist', label: 'Danh sách yêu thích', icon: '♡' },
   { to: '/compare', label: 'Quản lý & So sánh', icon: '⇄' },
-  { to: '/renter/profile', label: 'Cài đặt tài khoản', icon: '⚙' },
 ]
 
 const statusLabels = {
@@ -132,6 +132,13 @@ export default function RenterPage() {
   const rentals = dashboard?.rentalHistory || []
   const recent = dashboard?.recentRentals || []
   const isOrders = activeSection === 'orders'
+  const rentalColumns = [
+    { key: 'rentalCode', header: 'Mã đơn', className: 'whitespace-nowrap', render: (rental) => <Link className="font-semibold text-gray-700 hover:text-[#ff5500]" to={`/renter/orders/${rental.rentalId}`}>#{rental.rentalCode}</Link> },
+    { key: 'firstProductName', header: 'Thiết bị', className: 'min-w-[180px]', render: (rental) => rental.firstProductName || `${rental.itemCount} thiết bị` },
+    { key: 'createdAt', header: 'Ngày đặt', className: 'whitespace-nowrap', render: (rental) => dateLabel(rental.createdAt) },
+    { key: 'status', header: 'Trạng thái', render: (rental) => <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-semibold text-gray-600">{rentalStatus(rental.status)}</span> },
+    { key: 'totalAmount', header: 'Chi phí', className: 'whitespace-nowrap text-right', cellClassName: 'text-right', render: (rental) => <span className="font-bold text-gray-800">{money(rental.totalAmount)}</span> },
+  ]
 
   return (
     <div className="min-h-screen bg-[#f7f9fc] font-sans text-gray-900">
@@ -150,17 +157,7 @@ export default function RenterPage() {
                   <span className="w-5 text-center text-base" aria-hidden="true">{item.icon}</span>{item.label}
                 </NavLink>
               ))}
-              <div className="mt-3 border-t border-gray-100 pt-3">
-                <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Hỗ trợ</p>
-                <a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50" href="tel:19006789"><span className="w-5 text-center">◷</span>Lịch sử giao dịch</a>
-                <Link className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50" to="/renter/profile"><span className="w-5 text-center">♧</span>Thông báo & tài khoản</Link>
-              </div>
             </nav>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Cần giúp đỡ?</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">Liên hệ đội ngũ hỗ trợ nếu bạn cần trợ giúp về đơn thuê hoặc thiết bị.</p>
-              <a className="mt-3 inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:border-[#ff5500] hover:text-[#ff5500]" href="tel:19006789">Hỗ trợ ngay</a>
-            </div>
           </aside>
 
           <section className="min-w-0">
@@ -211,10 +208,7 @@ export default function RenterPage() {
                           <h2 className="text-base font-bold">Lịch sử thuê thiết bị gần đây</h2>
                           <Link className="text-xs font-semibold text-gray-500 hover:text-[#ff5500]" to="/renter/orders">Xem toàn bộ</Link>
                         </div>
-                        {rentals.length ? <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm">
-                          <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-400"><tr><th className="px-5 py-3">Mã đơn</th><th className="px-4 py-3">Thiết bị</th><th className="px-4 py-3">Ngày đặt</th><th className="px-4 py-3">Trạng thái</th><th className="px-5 py-3 text-right">Chi phí</th></tr></thead>
-                          <tbody className="divide-y divide-gray-100">{rentals.slice(0, 6).map((rental) => <tr className="hover:bg-gray-50/70" key={rental.rentalId}><td className="px-5 py-3.5 font-semibold text-gray-700">#{rental.rentalCode}</td><td className="px-4 py-3.5 font-medium text-gray-800">{rental.firstProductName || `${rental.itemCount} thiết bị`}</td><td className="px-4 py-3.5 text-gray-500">{dateLabel(rental.createdAt)}</td><td className="px-4 py-3.5"><span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">{rentalStatus(rental.status)}</span></td><td className="px-5 py-3.5 text-right font-bold text-gray-800">{money(rental.totalAmount)}</td></tr>)}</tbody>
-                        </table></div> : <p className="px-5 py-8 text-center text-sm text-gray-500">Lịch sử đơn thuê sẽ hiển thị tại đây.</p>}
+                        <DataTable columns={rentalColumns} rows={rentals} rowKey={(rental) => rental.rentalId} loading={loading} emptyMessage="Lịch sử đơn thuê sẽ hiển thị tại đây." searchable searchPlaceholder="Tìm mã đơn hoặc thiết bị…" pageSize={6} />
                       </section>
                     </div>
 
