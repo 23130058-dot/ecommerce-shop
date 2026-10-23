@@ -88,8 +88,8 @@ export default function LoginPage() {
     : 'relative text-[11px] font-bold uppercase text-gray-400 transition hover:text-gray-700'
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900">
-      <main className="flex min-h-[calc(100svh-270px)] items-center justify-center bg-[#f8fafc] px-6 py-8 max-lg:min-h-0">
+    <div className="flex min-h-screen flex-col bg-white font-sans text-gray-900">
+      <main className="flex min-h-[calc(100svh-270px)] flex-1 items-center justify-center bg-[#f8fafc] px-6 py-8 max-lg:min-h-0">
         <section
           aria-label="Đăng nhập LensRent"
           className="grid w-full max-w-[1860px] overflow-hidden rounded-[14px] bg-white shadow-[0_1px_3px_rgba(15,23,42,0.12)] lg:min-h-[800px] lg:grid-cols-2"

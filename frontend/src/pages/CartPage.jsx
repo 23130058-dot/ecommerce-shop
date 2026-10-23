@@ -81,9 +81,9 @@ export default function CartPage() {
   const itemCount = cart.items.reduce((total, item) => total + Number(item.quantity || 0), 0)
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f8fa] text-gray-900">
       <Header />
-      <main className="mx-auto min-h-[560px] max-w-[1120px] px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto min-h-[560px] w-full max-w-[1120px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <Link className="inline-flex items-center gap-2 text-sm text-gray-500 transition hover:text-[#ed4b0a]" to="/categories"><span aria-hidden="true">‹</span> Tiếp tục tìm kiếm</Link>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold sm:text-[28px]">Giỏ hàng của bạn</h1>

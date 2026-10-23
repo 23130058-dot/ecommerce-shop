@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import DataTable from '../components/shared/DataTable.jsx'
 import AdminLayout, { AdminIcon } from '../components/admin/AdminLayout.jsx'
+import ConfirmDialog from '../components/layout/ConfirmDialog.jsx'
+import { showToast } from '../services/toast.js'
 import { cancelAdminOrder, getAdminOrder, getAdminOrders } from '../services/adminApi.js'
 
 const money = (value) => `${(Number(value) || 0).toLocaleString('vi-VN')}đ`
@@ -57,6 +59,7 @@ export default function AdminOrdersPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const size = 10
 
@@ -91,15 +94,16 @@ export default function AdminOrdersPage() {
   }
 
   const cancelOrder = async () => {
-    if (!detail || !window.confirm(`Bạn muốn hủy đơn ${detail.rentalCode || `#${detail.id}`}? Số lượng sẽ được trả về kho.`)) return
+    if (!detail) return
     setBusy(true)
-    setDetailError('')
     try {
       await cancelAdminOrder(detail.id)
+      setShowCancelConfirm(false)
+      showToast('Đơn thuê đã được hủy.', 'success')
       setRefresh((value) => value + 1)
       await openOrder(detail.id)
     } catch (requestError) {
-      setDetailError(requestError.message)
+      showToast(requestError.message, 'error')
     } finally { setBusy(false) }
   }
 
@@ -118,5 +122,5 @@ export default function AdminOrdersPage() {
     <div className="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"><label className="flex h-10 w-full items-center gap-2 rounded-lg border border-gray-200 px-3 text-gray-400 focus-within:border-orange-400 sm:max-w-[390px]"><AdminIcon name="search" className="size-4 shrink-0" /><input value={search} onChange={(event) => changeFilter(setSearch, event.target.value)} placeholder="Tìm mã đơn, tên/email, sản phẩm…" aria-label="Tìm đơn thuê" className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400" /></label><label className="flex items-center gap-2 text-xs text-gray-500">Trạng thái<select value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-orange-400"><option value="all">Tất cả</option><option value="PENDING">Chờ xác nhận</option><option value="CONFIRMED">Đã xác nhận</option><option value="ACTIVE">Đang thuê</option><option value="COMPLETED">Hoàn tất</option><option value="CANCELLED">Đã hủy</option></select></label></div>
     <DataTable columns={columns} rows={data.items || []} rowKey={(order) => order.id} loading={loading} error={error} emptyMessage="Không tìm thấy đơn thuê." page={page} pageCount={Math.max(data.totalPages || 0, 1)} totalElements={data.totalElements || 0} size={size} onPageChange={setPage} />
     <p className="mt-4 text-center text-[11px] text-gray-400">Admin chỉ hủy được đơn còn chờ xác nhận; các đơn đã được Owner xử lý phải theo quy trình hiện tại.</p>
-  </main><OrderDetailModal order={detail} loading={detailLoading} error={detailError} busy={busy} onClose={() => { setDetail(null); setDetailError('') }} onCancel={cancelOrder} /></AdminLayout>
+  </main><OrderDetailModal order={detail} loading={detailLoading} error={detailError} busy={busy} onClose={() => { setDetail(null); setDetailError('') }} onCancel={() => setShowCancelConfirm(true)} /><ConfirmDialog open={showCancelConfirm} title="Hủy đơn thuê?" message={"Bạn muốn hủy đơn " + (detail?.rentalCode || "#" + detail?.id) + "? Số lượng sẽ được trả về kho."} confirmLabel="Hủy đơn" tone="danger" busy={busy} onCancel={() => setShowCancelConfirm(false)} onConfirm={cancelOrder} /></AdminLayout>
 }

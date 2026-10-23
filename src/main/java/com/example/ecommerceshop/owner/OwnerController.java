@@ -76,6 +76,12 @@ public class OwnerController {
         ownerService.confirmBooking(userId(jwt), rentalId);
     }
 
+    @PatchMapping("/bookings/{rentalId}/handover")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void handoverBooking(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {
+        ownerService.handoverBooking(userId(jwt), rentalId);
+    }
+
     @PatchMapping("/bookings/{rentalId}/complete")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void completeBooking(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {

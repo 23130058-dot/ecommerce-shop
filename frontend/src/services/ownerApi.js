@@ -40,6 +40,7 @@ export const getOwnerRevenue = ({ from, to, signal } = {}) => {
 }
 export const getOwnerBookings = (options) => request('/bookings', options)
 export const confirmOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/confirm`, { method: 'PATCH' })
+export const handoverOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/handover`, { method: 'PATCH' })
 export const completeOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/complete`, { method: 'PATCH' })
 export const cancelOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/cancel`, { method: 'PATCH' })
 export const getOwnerSchedules = (options) => request('/schedule', options)

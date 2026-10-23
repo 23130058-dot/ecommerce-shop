@@ -189,9 +189,9 @@ export default function CategoryPage({ categorySlug }) {
   const scrollToProducts = () => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })
 
   return (
-    <div id="top" className="min-h-screen bg-white font-sans text-[#111827]">
+    <div id="top" className="flex min-h-screen flex-col bg-white font-sans text-[#111827]">
       <Header searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
-      <main id="categories" className="mx-auto max-w-[1600px] px-4 pb-16 pt-5 sm:px-6 lg:px-10">
+      <main id="categories" className="mx-auto w-full max-w-[1600px] flex-1 px-4 pb-16 pt-5 sm:px-6 lg:px-10">
         <nav aria-label="Đường dẫn" className="mb-6 flex items-center gap-2 text-xs text-gray-500">
           <Link className="hover:text-[#ff5500]" to="/">Trang chủ</Link>
           <span aria-hidden="true">/</span>

@@ -284,7 +284,7 @@ public class ShoppingService {
         Integer rentingDevices = jdbc.queryForObject("""
                 SELECT COALESCE(SUM(ri.quantity), 0)::integer
                 FROM rentals r JOIN rental_items ri ON ri.rental_id = r.id
-                WHERE r.renter_id = ? AND UPPER(COALESCE(ri.status, r.status, '')) IN ('CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING')
+                WHERE r.renter_id = ? AND UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')
                 """, Integer.class, userId);
         Integer pendingReturns = jdbc.queryForObject("""
                 SELECT COUNT(*)::integer FROM rentals
@@ -319,7 +319,7 @@ public class ShoppingService {
                     ORDER BY is_primary DESC NULLS LAST, id LIMIT 1
                 ) image ON TRUE
                 WHERE r.renter_id = ?
-                  AND UPPER(COALESCE(ri.status, r.status, '')) IN ('CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING')
+                  AND UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')
                 ORDER BY ri.start_date, r.created_at DESC, ri.id
                 """, (rs, rowNum) -> new CurrentRentalItem(
                 rs.getLong("rental_id"), rs.getString("rental_code"), rs.getString("rental_status"),
@@ -387,11 +387,11 @@ public class ShoppingService {
     public void requestReturn(long userId,long rentalId) {
         List<Long> items=jdbc.query("""
                 SELECT ri.id FROM rental_items ri JOIN rentals r ON r.id=ri.rental_id
-                WHERE r.id=? AND r.renter_id=? AND UPPER(COALESCE(ri.status,'')) IN ('CONFIRMED','ACTIVE','IN_PROGRESS','RENTING')
+                WHERE r.id=? AND r.renter_id=? AND UPPER(COALESCE(ri.status,'')) IN ('ACTIVE','IN_PROGRESS','RENTING')
                   AND ri.start_date<=CURRENT_DATE
                 FOR UPDATE
                 """,(rs,n)->rs.getLong(1),rentalId,userId);
-        if(items.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Không có thiết bị đang thuê để yêu cầu trả.");
+        if(items.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Chưa thể gửi yêu cầu trả. Thiết bị cần đến ngày bắt đầu thuê và đang ở trạng thái Đang thuê.");
         for(Long itemId:items) jdbc.update("UPDATE rental_items SET status='RETURN_PENDING' WHERE id=?",itemId);
         jdbc.update("INSERT INTO user_notifications(user_id,type,title,message,target_url) SELECT DISTINCT p.owner_id,'RETURN','Có yêu cầu trả thiết bị','Người thuê yêu cầu trả thiết bị cho đơn '||r.rental_code||'.','/owner/returns' FROM rentals r JOIN rental_items ri ON ri.rental_id=r.id JOIN products p ON p.id=ri.product_id WHERE r.id=?",rentalId);
         jdbc.update("UPDATE rentals SET status='RETURN_PENDING' WHERE id=?",rentalId);

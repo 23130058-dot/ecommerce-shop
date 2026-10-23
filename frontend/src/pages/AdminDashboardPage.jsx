@@ -312,7 +312,7 @@ export default function AdminDashboardPage() {
   const recentActivities = (dashboard?.recentActivities || []).map(mapActivity)
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] text-[#1f2937]">
+    <div className="flex min-h-screen flex-col bg-[#f7f8fa] text-[#1f2937]">
       <header className="sticky top-0 z-20 h-[62px] border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -342,7 +342,7 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1280px] items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-1 items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
         <aside className="sticky top-[82px] hidden w-[205px] shrink-0 rounded-xl border border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
           <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
             <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-9" />

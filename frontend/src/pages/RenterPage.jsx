@@ -141,9 +141,9 @@ export default function RenterPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#f7f9fc] font-sans text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f9fc] font-sans text-gray-900">
       <Header />
-      <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="grid items-start gap-5 lg:grid-cols-[230px_minmax(0,1fr)] xl:gap-6">
           <aside className="space-y-4">
             <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">

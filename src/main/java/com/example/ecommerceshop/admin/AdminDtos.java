@@ -77,8 +77,8 @@ public final class AdminDtos {
 
     public record UpdateProductStatusRequest(
             @NotNull
-            @Pattern(regexp = "ACTIVE|INACTIVE", flags = Pattern.Flag.CASE_INSENSITIVE,
-                    message = "Trạng thái sản phẩm chỉ được là ACTIVE hoặc INACTIVE")
+            @Pattern(regexp = "ACTIVE|INACTIVE|PENDING", flags = Pattern.Flag.CASE_INSENSITIVE,
+                    message = "Trạng thái sản phẩm chỉ được là ACTIVE, INACTIVE hoặc PENDING")
             String status
     ) {
     }

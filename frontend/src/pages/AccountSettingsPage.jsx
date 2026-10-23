@@ -489,9 +489,9 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] font-sans text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f8fa] font-sans text-slate-900">
       <Header />
-      <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:py-9">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 sm:px-6 lg:py-9">
         <div className="mb-6">
           <div className="mb-3 flex items-center gap-2 text-xs text-slate-500"><Link className="hover:text-orange-600" to="/">Trang chủ</Link><span>/</span><span className="font-medium text-slate-700">Cài đặt tài khoản</span></div>
           <div className="flex flex-wrap items-end justify-between gap-3">

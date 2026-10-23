@@ -25,7 +25,6 @@ export default function EquipmentAdd() {
         deposit: '',
         quantity: '1',
         description: '',
-        status: 'ACTIVE',
     })
 
     const [image, setImage] = useState(null)
@@ -78,10 +77,9 @@ export default function EquipmentAdd() {
                 depositAmount: Number(form.deposit || 0),
                 quantity: Number(form.quantity),
                 description: form.description.trim(),
-                status: form.status,
                 imageUrl: imageData,
             })
-            navigate('/owner/equipment', { state: { success: 'Đã đăng thiết bị cho thuê.' } })
+            navigate('/owner/equipment', { state: { success: 'Đã gửi thiết bị để Admin xét duyệt. Thiết bị sẽ hiển thị cho renter sau khi được duyệt.' } })
         } catch (saveError) {
             setError(saveError.message)
         } finally {
@@ -90,7 +88,7 @@ export default function EquipmentAdd() {
     }
 
     return (
-        <div className="min-h-screen bg-[#f7f8fa] p-6">
+        <div className="bg-[#f7f8fa] p-6">
 
             {/* Breadcrumb */}
             <div className="mb-5 text-sm text-gray-500">
@@ -115,7 +113,7 @@ export default function EquipmentAdd() {
                 </h1>
 
                 <p className="mt-1 text-sm text-gray-500">
-                    Đăng thiết bị mới lên LensRent
+                    Gửi thiết bị mới để Admin xét duyệt
                 </p>
 
             </div>
@@ -256,30 +254,9 @@ export default function EquipmentAdd() {
 
                                 </div>
 
-                                {/* Status */}
-                                <div>
-
-                                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                                        Trạng thái
-                                    </label>
-
-                                    <select
-                                        name="status"
-                                        value={form.status}
-                                        onChange={handleChange}
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"
-                                    >
-
-                                        <option value="ACTIVE">
-                                            Sẵn sàng
-                                        </option>
-
-                                        <option value="INACTIVE">
-                                            Tạm ẩn
-                                        </option>
-
-                                    </select>
-
+                                <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                                    <p className="text-sm font-semibold text-amber-800">Thiết bị sẽ chờ Admin duyệt</p>
+                                    <p className="mt-1 text-xs leading-5 text-amber-700">Sau khi gửi, bạn vẫn có thể sửa thông tin. Thiết bị chưa xuất hiện trong danh mục cho đến khi được duyệt.</p>
                                 </div>
 
                                 <div className="md:col-span-2">
@@ -378,7 +355,7 @@ export default function EquipmentAdd() {
                         disabled={busy}
                         className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e] disabled:cursor-wait disabled:opacity-60"
                     >
-                        {busy ? 'Đang lưu…' : 'Lưu thiết bị'}
+                        {busy ? 'Đang gửi…' : 'Gửi xét duyệt'}
                     </button>
 
                 </div>

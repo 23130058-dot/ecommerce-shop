@@ -45,9 +45,9 @@ export default function HomePage() {
   const scrollToProducts = () => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })
 
   return (
-    <div id="top" className="min-h-screen bg-white font-sans text-[#111827]">
+    <div id="top" className="flex min-h-screen flex-col bg-white font-sans text-[#111827]">
       <Header searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
-      <main>
+      <main className="flex-1">
         <Hero searchValue={searchValue} onSearchChange={setSearchValue} onSearch={scrollToProducts} />
         <CategoriesSection />
         <FeaturedProducts
