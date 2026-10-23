@@ -27,7 +27,7 @@ public class OwnerWorkspaceService {
                     (SELECT COUNT(DISTINCT ri.rental_id)
                      FROM rental_items ri JOIN products p ON p.id = ri.product_id
                      WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) IN
-                       ('CONFIRMED','ACTIVE','IN_PROGRESS','RENTING','RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN')) AS active_rentals,
+                       ('ACTIVE','IN_PROGRESS','RENTING','RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN')) AS active_rentals,
                     (SELECT COUNT(DISTINCT ri.rental_id)
                      FROM rental_items ri JOIN products p ON p.id = ri.product_id
                      WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) = 'COMPLETED') AS completed_rentals,
@@ -63,9 +63,9 @@ public class OwnerWorkspaceService {
                        COALESCE(SUM(p.deposit_amount * ri.quantity), 0) AS deposit_amount,
                        CASE
                            WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) = 'COMPLETED') THEN 'COMPLETED'
-                           WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) IN ('CONFIRMED','ACTIVE','IN_PROGRESS','RENTING')) THEN 'CONFIRMED'
-                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE','IN_PROGRESS','RENTING')) THEN 'ACTIVE'
                            WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'PENDING') THEN 'PENDING'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'CONFIRMED') THEN 'CONFIRMED'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE','IN_PROGRESS','RENTING')) THEN 'ACTIVE'
                            ELSE MAX(r.status)
                        END AS status,
                        COALESCE(payment.status, 'UNPAID') AS payment_status, r.created_at

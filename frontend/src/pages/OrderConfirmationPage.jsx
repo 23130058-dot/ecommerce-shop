@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
+import ConfirmDialog from '../components/layout/ConfirmDialog.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getRental, cancelRental, requestRentalReturn, getRentalChats, getRentalChatMessages, sendRentalChatMessage } from '../services/shoppingApi.js'
 import { getCatalogProducts } from '../services/productApi.js'
+import { showToast } from '../services/toast.js'
 
 function money(value) {
   return `${Number(value || 0).toLocaleString('vi-VN')}đ`
@@ -27,12 +29,11 @@ export default function OrderConfirmationPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
-  const [actionError, setActionError] = useState('')
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [chatOwners, setChatOwners] = useState([])
   const [selectedOwnerId, setSelectedOwnerId] = useState('')
   const [chatMessages, setChatMessages] = useState([])
   const [chatBody, setChatBody] = useState('')
-  const [chatError, setChatError] = useState('')
   const [chatBusy, setChatBusy] = useState(false)
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function OrderConfirmationPage() {
       setSelectedOwnerId((current) => rows.some((owner) => String(owner.ownerId) === current)
         ? current
         : String(rows[0]?.ownerId || ''))
-    }).catch((chatLoadError) => { if (active) setChatError(chatLoadError.message) })
+    }).catch((chatLoadError) => { if (active) showToast(chatLoadError.message, 'error') })
     return () => { active = false }
   }, [rental?.rentalId])
 
@@ -66,32 +67,41 @@ export default function OrderConfirmationPage() {
     if (!rental?.rentalId || !selectedOwnerId) { setChatMessages([]); return }
     let active = true
     getRentalChatMessages(rental.rentalId, selectedOwnerId)
-      .then((rows) => { if (active) { setChatMessages(rows); setChatError('') } })
-      .catch((chatLoadError) => { if (active) setChatError(chatLoadError.message) })
+      .then((rows) => { if (active) setChatMessages(rows) })
+      .catch((chatLoadError) => { if (active) showToast(chatLoadError.message, 'error') })
     return () => { active = false }
   }, [rental?.rentalId, selectedOwnerId])
 
   const currentStatus = String(rental?.status || '').toUpperCase()
   const canCancel = ['PENDING','CONFIRMED'].includes(currentStatus) && rental?.items?.some((item) => item.startDate > new Date().toISOString().slice(0,10))
-  const canRequestReturn = ['CONFIRMED','ACTIVE','IN_PROGRESS','RENTING'].includes(currentStatus)
+  const returnStatuses = ['ACTIVE','IN_PROGRESS','RENTING'].includes(currentStatus)
+  const hasStartedRentalItem = rental?.items?.some((item) => item.startDate <= new Date().toISOString().slice(0,10))
+  const canShowReturnRequest = returnStatuses
+  const canRequestReturn = returnStatuses && hasStartedRentalItem
   const runOrderAction = async (action) => {
-    setActionBusy(true); setActionError('')
+    setActionBusy(true)
     try {
       if (action === 'cancel') await cancelRental(rentalId)
       else await requestRentalReturn(rentalId)
       setRental(await getRental(rentalId))
-    } catch (actionError) { setActionError(actionError.message) } finally { setActionBusy(false) }
+      if (action === 'cancel') setShowCancelConfirm(false)
+      showToast(action === 'cancel' ? 'Đơn thuê đã được hủy.' : 'Yêu cầu trả thiết bị đã được gửi cho Owner.', 'success')
+    } catch (actionError) {
+      showToast(actionError.message || 'Không thể cập nhật đơn thuê. Vui lòng thử lại.', 'error')
+      if (action === 'return') getRental(rentalId).then(setRental).catch(() => {})
+    } finally { setActionBusy(false) }
   }
   const sendMessage = async (event) => {
     event.preventDefault()
     if (!chatBody.trim() || !selectedOwnerId) return
-    setChatBusy(true); setChatError('')
+    setChatBusy(true)
     try {
       const message = await sendRentalChatMessage(rental.rentalId, selectedOwnerId, chatBody.trim())
       setChatMessages((current) => [...current, message])
       setChatBody('')
       setChatOwners(await getRentalChats(rental.rentalId))
-    } catch (sendError) { setChatError(sendError.message) } finally { setChatBusy(false) }
+      showToast('Tin nhắn đã được gửi.', 'success')
+    } catch (sendError) { showToast(sendError.message, 'error') } finally { setChatBusy(false) }
   }
   const timeline = [
     { title: 'Đặt đơn thuê thành công', detail: 'Yêu cầu thuê đã được lưu vào tài khoản LensRent.', done: Boolean(rental) },
@@ -101,9 +111,9 @@ export default function OrderConfirmationPage() {
     { title: 'Đang thuê', detail: 'Thiết bị sẽ xuất hiện trong danh sách đang thuê.', done: ['ACTIVE', 'RENTING', 'IN_PROGRESS'].includes(currentStatus) },
   ]
 
-  return <div className="min-h-screen bg-[#f7f9fc] text-gray-900">
+  return <div className="flex min-h-screen flex-col bg-[#f7f9fc] text-gray-900">
     <Header />
-    <main className="mx-auto min-h-[560px] max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-[560px] w-full max-w-[1180px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
       {loading ? <div className="rounded-xl border border-gray-200 bg-white px-5 py-16 text-center text-sm text-gray-500">Đang tải thông tin đơn thuê…</div> : error ? <div className="rounded-xl border border-red-200 bg-white px-5 py-12 text-center"><p className="text-sm font-semibold text-red-700">{error}</p><Link className="mt-4 inline-block text-sm font-bold text-[#ff5500]" to="/renter/orders">Quay về đơn thuê</Link></div> : rental && <>
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(350px,0.85fr)]">
           <div className="space-y-4">
@@ -114,8 +124,7 @@ export default function OrderConfirmationPage() {
                   <p className="text-xs font-bold uppercase tracking-wide text-[#ff5500]">{isNewOrder ? 'LensRent · Hoàn tất yêu cầu' : `LensRent · Đơn ${rental.rentalCode}`}</p>
                   <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">{isNewOrder ? 'Đơn hàng đã được ghi nhận!' : 'Thông tin đơn thuê'}</h1>
                   <p className="mt-2 text-sm leading-6 text-gray-500">{isNewOrder ? <>Mã đơn <b className="text-[#ff5500]">#{rental.rentalCode}</b> đã được tạo và thanh toán mô phỏng thành công. Chủ thiết bị sẽ cập nhật khi xác nhận đơn.</> : <>Trạng thái hiện tại: <b className="text-gray-800">{statusLabels[currentStatus] || currentStatus}</b>.</>}</p>
-                  <div className="mt-4 flex flex-wrap gap-2"><Link className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600" to={`/renter/orders/${rental.rentalId}`}>Theo dõi đơn thuê</Link>{canCancel&&<button disabled={actionBusy} onClick={()=>window.confirm('Bạn có chắc muốn hủy đơn thuê này?')&&runOrderAction('cancel')} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50">{actionBusy?'Đang xử lý…':'Hủy đơn'}</button>}{canRequestReturn&&<button disabled={actionBusy} onClick={()=>window.confirm('Gửi yêu cầu trả thiết bị cho Owner?')&&runOrderAction('return')} className="rounded-lg border border-orange-200 px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:opacity-50">{actionBusy?'Đang xử lý…':'Yêu cầu trả thiết bị'}</button>}<button className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" onClick={() => window.print()} type="button">In hóa đơn</button></div>
-                  {actionError&&<p role="alert" className="mt-3 text-sm text-rose-600">{actionError}</p>}
+                  <div className="mt-4 flex flex-wrap gap-2"><Link className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600" to={`/renter/orders/${rental.rentalId}`}>Theo dõi đơn thuê</Link>{canCancel&&<button disabled={actionBusy} onClick={()=>setShowCancelConfirm(true)} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50">Hủy đơn</button>}{canShowReturnRequest&&<button disabled={actionBusy || !canRequestReturn} title={!canRequestReturn ? 'Chỉ có thể yêu cầu trả từ ngày bắt đầu thuê.' : undefined} onClick={()=>runOrderAction('return')} className="rounded-lg border border-orange-200 px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{actionBusy?'Đang xử lý…':canRequestReturn?'Yêu cầu trả thiết bị':'Chưa đến ngày thuê'}</button>}<button className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" onClick={() => window.print()} type="button">In hóa đơn</button></div>
                 </div>
               </div>
             </section>
@@ -135,7 +144,6 @@ export default function OrderConfirmationPage() {
                 <div><h2 className="text-base font-extrabold">Trao đổi với Owner</h2><p className="mt-1 text-xs text-gray-500">Tin nhắn được lưu theo đơn thuê.</p></div>
                 {chatOwners.length > 1 && <label className="text-xs font-semibold text-gray-500">Chủ thiết bị<select value={selectedOwnerId} onChange={(event) => setSelectedOwnerId(event.target.value)} className="ml-2 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-800">{chatOwners.map((owner) => <option key={owner.ownerId} value={owner.ownerId}>{owner.ownerName}</option>)}</select></label>}
               </div>
-              {chatError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{chatError}</p>}
               {!chatOwners.length ? <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">Đơn chưa có Owner để trao đổi.</p> : <>
                 <div className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg bg-gray-50 p-3" aria-live="polite">
                   {chatMessages.length ? chatMessages.map((message) => <div key={message.id} className={`flex ${message.mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-xl px-3 py-2 ${message.mine ? 'bg-orange-500 text-white' : 'border border-gray-200 bg-white text-gray-800'}`}><p className="text-[11px] font-bold">{message.mine ? 'Bạn' : message.senderName}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{message.body}</p><p className={`mt-1 text-right text-[10px] ${message.mine ? 'text-white/75' : 'text-gray-400'}`}>{dateTime(message.createdAt)}</p></div></div>) : <p className="py-8 text-center text-sm text-gray-400">Chưa có tin nhắn. Bạn có thể gửi câu hỏi cho Owner.</p>}
@@ -179,5 +187,6 @@ export default function OrderConfirmationPage() {
       </>}
     </main>
     <Footer />
+    <ConfirmDialog open={showCancelConfirm} title="Hủy đơn thuê?" message="Bạn có chắc muốn hủy đơn thuê này không?" confirmLabel="Hủy đơn" tone="danger" busy={actionBusy} onCancel={() => setShowCancelConfirm(false)} onConfirm={() => runOrderAction('cancel')} />
   </div>
 }

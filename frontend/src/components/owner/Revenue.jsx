@@ -62,7 +62,7 @@ export default function Revenue() {
         : 0
 
     return (
-        <div className="min-h-screen bg-[#f7f7f8]">
+        <div className="bg-[#f7f7f8]">
             <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
                 <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
                     <div>

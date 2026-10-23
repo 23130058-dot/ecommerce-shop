@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
@@ -7,6 +7,7 @@ import { getCatalogProduct, getCatalogProducts } from '../services/productApi.js
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, addToCompare, addToWishlist } from '../services/shoppingApi.js'
 import { showToast } from '../services/toast.js'
+import ProductReviews from '../components/product/ProductReviews.jsx'
 
 const categoryRoutes = {
   camera: 'may-anh',
@@ -153,6 +154,9 @@ export default function ProductDetailPage() {
   const rentalAmount = Number(product?.price || 0) * dayCount
   const depositAmount = Number(product?.depositAmount || 0)
   const totalAmount = rentalAmount + depositAmount
+  const syncProductRating = useCallback((rating) => {
+    setProduct((current) => current ? { ...current, rating } : current)
+  }, [])
 
   const moveGallery = (direction) => {
     setSelectedImage((index) => (index + direction + images.length) % images.length)
@@ -196,9 +200,9 @@ export default function ProductDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans text-[#111827]">
+    <div className="flex min-h-screen flex-col bg-[#f8fafc] font-sans text-[#111827]">
       <Header />
-      <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
         {product && (
           <nav aria-label="Đường dẫn" className="mb-5 flex flex-wrap items-center gap-2 text-sm text-gray-500">
             <Link className="transition hover:text-[#ff5500]" to="/">Trang chủ</Link>
@@ -366,15 +370,12 @@ export default function ProductDetailPage() {
               </aside>
             </section>
 
-            <section className="mt-6 rounded-xl border border-gray-200 bg-white p-5 sm:p-6" id="reviews">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">Đánh giá sản phẩm</h2>
-                  <p className="mt-1 text-sm text-gray-500">Điểm đánh giá do hệ thống LensRent cung cấp.</p>
-                </div>
-                <p className="text-lg font-bold text-gray-900"><span className="text-amber-500">★</span> {Number(product.rating || 0).toFixed(1)} <span className="text-sm font-medium text-gray-500">/ 5</span></p>
-              </div>
-            </section>
+            <ProductReviews
+              productId={product.id}
+              isSignedIn={isSignedIn}
+              onNeedSignIn={() => navigate('/login', { state: { from: location } })}
+              onRatingChange={syncProductRating}
+            />
 
             {relatedProducts.length > 0 && (
               <section className="mt-8 rounded-xl bg-[#f1f3f5] p-5 sm:p-6">

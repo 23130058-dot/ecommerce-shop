@@ -37,6 +37,9 @@ export default function EquipmentEdit() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
+    const isPendingApproval = ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL']
+        .includes(String(product?.status || '').toUpperCase())
+
     useEffect(() => {
         const controller = new AbortController()
         setLoading(true)
@@ -58,7 +61,7 @@ export default function EquipmentEdit() {
                     quantity: String(current.availableQuantity ?? 1),
                     description: current.description || '',
                     tags: Array.isArray(current.tags) ? current.tags.join(', ') : (current.tags || '').replaceAll('|', ', '),
-                    status: current.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                    status: String(current.status || 'ACTIVE').toUpperCase(),
                 })
                 setImagePreview(resolveProductImage(current.imageKey))
                 setError('')
@@ -115,7 +118,7 @@ export default function EquipmentEdit() {
                 status: form.status,
                 ...(imageData ? { imageUrl: imageData } : {}),
             })
-            navigate('/owner/equipment', { state: { success: 'Đã lưu thay đổi thiết bị.' } })
+            navigate('/owner/equipment', { state: { success: isPendingApproval ? 'Đã lưu thay đổi. Thiết bị vẫn đang chờ Admin duyệt.' : 'Đã lưu thay đổi thiết bị.' } })
         } catch (saveError) {
             setError(saveError.message)
         } finally {
@@ -137,7 +140,7 @@ export default function EquipmentEdit() {
     }
 
     return (
-        <div className="min-h-screen bg-[#f7f8fa] p-4 sm:p-6">
+        <div className="bg-[#f7f8fa] p-4 sm:p-6">
             <div className="mb-5 text-sm text-gray-500">Quản lý cho thuê <span className="mx-2">/</span><span className="text-gray-800">Sửa thiết bị</span></div>
             <div className="mb-6">
                 <h1 className="text-2xl font-semibold text-[#172033]">Sửa thông tin thiết bị</h1>
@@ -185,13 +188,20 @@ export default function EquipmentEdit() {
                                     Số lượng sẵn sàng cho thuê
                                     <input className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-normal outline-none focus:border-[#F45116]" min="1" name="quantity" onChange={handleChange} required type="number" value={form.quantity} />
                                 </label>
-                                <label className="grid gap-2 text-sm font-medium text-gray-700">
-                                    Trạng thái đăng
-                                    <select className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-normal outline-none focus:border-[#F45116]" name="status" onChange={handleChange} value={form.status}>
-                                        <option value="ACTIVE">Đang đăng cho thuê</option>
-                                        <option value="INACTIVE">Tạm ẩn</option>
-                                    </select>
-                                </label>
+                                {isPendingApproval ? (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 md:col-span-2">
+                                        <p className="text-sm font-semibold text-amber-800">Đang chờ Admin duyệt</p>
+                                        <p className="mt-1 text-xs leading-5 text-amber-700">Bạn có thể sửa thông tin, nhưng chỉ Admin mới có thể đưa thiết bị lên cửa hàng.</p>
+                                    </div>
+                                ) : (
+                                    <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                        Trạng thái đăng
+                                        <select className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-normal outline-none focus:border-[#F45116]" name="status" onChange={handleChange} value={form.status}>
+                                            <option value="ACTIVE">Đang đăng cho thuê</option>
+                                            <option value="INACTIVE">Tạm ẩn</option>
+                                        </select>
+                                    </label>
+                                )}
                                 <label className="grid gap-2 text-sm font-medium text-gray-700 md:col-span-2">
                                     Thẻ tìm kiếm
                                     <input className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-normal outline-none focus:border-[#F45116]" name="tags" onChange={handleChange} placeholder="Ví dụ: Full-frame, 4K, chống rung" value={form.tags} />

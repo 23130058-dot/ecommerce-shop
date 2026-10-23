@@ -33,27 +33,29 @@ export default function EquipmentList() {
             const matchCategory = !categorySlug || item.category === categorySlug
             const available = Number(item.availableQuantity || 0)
             const rented = Number(item.currentlyRentedQuantity || 0)
+            const normalizedStatus = String(item.status || '').toUpperCase()
             const matchStatus = status === 'all'
-                || (status === 'available' && item.status === 'ACTIVE' && available > 0)
+                || (status === 'pending' && ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL'].includes(normalizedStatus))
+                || (status === 'available' && normalizedStatus === 'ACTIVE' && available > 0)
                 || (status === 'rented' && rented > 0)
-                || (status === 'hidden' && item.status !== 'ACTIVE')
+                || (status === 'hidden' && normalizedStatus === 'INACTIVE')
             return matchSearch && matchCategory && matchStatus
         })
     }, [category, equipment, search, status])
 
-    const availableCount = equipment.reduce((sum, item) => sum + Number(item.availableQuantity || 0), 0)
+    const availableCount = equipment.reduce((sum, item) => String(item.status || '').toUpperCase() === 'ACTIVE' ? sum + Number(item.availableQuantity || 0) : sum, 0)
     const rentedCount = equipment.reduce((sum, item) => sum + Number(item.currentlyRentedQuantity || 0), 0)
     const columns = [
         { key: 'name', header: 'Thiết bị', className: 'min-w-[220px]', render: (item) => <div className="flex items-center gap-3"><div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1"><img src={resolveProductImage(item.imageKey)} alt={item.name} className="max-h-full max-w-full object-contain" /></div><div><p className="font-semibold text-[#172033]">{item.name}</p><p className="mt-1 text-[10px] text-gray-500">{item.brand ? `${item.brand} · ` : ''}{item.type}</p></div></div> },
         { key: 'categoryName', header: 'Danh mục', render: (item) => item.categoryName || 'Khác' },
-        { key: 'dailyPrice', header: 'Giá thuê', className: 'whitespace-nowrap', render: (item) => <><span className="font-semibold text-[#172033]">{money(item.dailyPrice)}</span><span className="mt-1 block text-[10px] text-gray-400">/ ngày</span></> },
+        { key: 'dailyPrice', header: 'Giá thuê', className: 'min-w-[128px] whitespace-nowrap', cellClassName: 'min-w-[128px] whitespace-nowrap', render: (item) => <><span className="font-semibold text-[#172033]">{money(item.dailyPrice)}</span><span className="mt-1 block text-[10px] text-gray-400">/ ngày</span></> },
         { key: 'availableQuantity', header: 'Số lượng', className: 'whitespace-nowrap', render: (item) => <><span className="font-semibold text-green-700">Còn {Number(item.availableQuantity || 0)}</span><span className="ml-2 text-gray-500">· thuê {Number(item.currentlyRentedQuantity || 0)}</span></> },
-        { key: 'status', header: 'Trạng thái', render: (item) => !['ACTIVE'].includes(item.status) ? <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-medium text-gray-600">Tạm ẩn</span> : Number(item.currentlyRentedQuantity) > 0 ? <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="rounded-full bg-green-50 px-3 py-1 text-[10px] font-medium text-green-600">Sẵn sàng</span> },
-        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'whitespace-nowrap text-right', cellClassName: 'text-right', render: (item) => <div className="flex justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="rounded-lg border border-gray-300 px-3 py-2 text-[10px] font-semibold text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="rounded-lg border border-[#F45116] px-3 py-2 text-[10px] font-semibold text-[#F45116] hover:bg-orange-50">Chi tiết</Link></div> },
+        { key: 'status', header: 'Trạng thái', render: (item) => ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL'].includes(String(item.status || '').toUpperCase()) ? <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-700">Chờ Admin duyệt</span> : item.status === 'INACTIVE' ? <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-medium text-gray-600">Tạm ẩn</span> : Number(item.currentlyRentedQuantity) > 0 ? <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="rounded-full bg-green-50 px-3 py-1 text-[10px] font-medium text-green-600">Sẵn sàng</span> },
+        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[164px] whitespace-nowrap text-right', cellClassName: 'min-w-[164px] whitespace-nowrap text-right', render: (item) => <div className="flex flex-nowrap justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="inline-flex min-w-[58px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-gray-300 px-2.5 py-2 text-[10px] font-semibold text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="inline-flex min-w-[70px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-[#F45116] px-2.5 py-2 text-[10px] font-semibold text-[#F45116] hover:bg-orange-50">Chi tiết</Link></div> },
     ]
 
     return (
-        <div className="min-h-screen bg-[#f7f8fa] p-6">
+        <div className="bg-[#f7f8fa] p-6">
             <div className="mb-5 text-sm text-gray-500">Quản lý cho thuê <span className="mx-2">/</span><span className="text-gray-800">Quản lý thiết bị</span></div>
 
             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -75,7 +77,7 @@ export default function EquipmentList() {
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm thiết bị của bạn..." className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]" />
                     <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"><option value="all">Tất cả danh mục</option>{categories.map((item) => <option key={item.keyword} value={item.keyword}>{item.name}</option>)}</select>
-                    <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"><option value="all">Tất cả trạng thái</option><option value="available">Còn thiết bị</option><option value="rented">Đang có đơn thuê</option><option value="hidden">Tạm ẩn</option></select>
+                    <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-[#F45116]"><option value="all">Tất cả trạng thái</option><option value="pending">Chờ Admin duyệt</option><option value="available">Còn thiết bị</option><option value="rented">Đang có đơn thuê</option><option value="hidden">Tạm ẩn</option></select>
                 </div>
             </div>
 

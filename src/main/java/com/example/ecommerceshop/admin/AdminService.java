@@ -222,7 +222,7 @@ public class AdminService {
     @Transactional
     public void updateProductStatus(long productId, String requestedStatus) {
         String status = requestedStatus == null ? "" : requestedStatus.trim().toUpperCase(Locale.ROOT);
-        if (!List.of("ACTIVE", "INACTIVE").contains(status)) {
+        if (!List.of("ACTIVE", "INACTIVE", "PENDING").contains(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sản phẩm không hợp lệ.");
         }
         int changed = jdbcTemplate.update("UPDATE products SET status = ? WHERE id = ?", status, productId);

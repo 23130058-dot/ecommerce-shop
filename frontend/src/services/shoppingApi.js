@@ -26,10 +26,19 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   if (!response.ok) {
     const serverMessage = [result?.detail, result?.message]
       .find((message) => typeof message === 'string' && message.trim() && message.trim().toLowerCase() !== 'forbidden')
+    const errorMessage = typeof result?.error === 'string' ? result.error.trim() : ''
     if (response.status === 403) {
       throw new Error(serverMessage || 'Bạn không thể thuê sản phẩm do chính mình đăng.')
     }
-    throw new Error(serverMessage || result?.error || `Yêu cầu thất bại (${response.status}).`)
+    if (response.status === 409) {
+      const message = serverMessage || errorMessage
+      const isGenericConflict = !message || ['conflict', '409', 'http 409'].includes(message.toLowerCase())
+      if (path.includes('/return') && isGenericConflict) {
+        throw new Error('Chưa thể gửi yêu cầu trả. Thiết bị cần đến ngày bắt đầu thuê và đang ở trạng thái Đang thuê.')
+      }
+      throw new Error(message || 'Trạng thái đơn vừa thay đổi. Hãy tải lại trang rồi thử lại.')
+    }
+    throw new Error(serverMessage || errorMessage || `Yêu cầu thất bại (${response.status}).`)
   }
   if (method !== 'GET') window.dispatchEvent(new Event('lensrent-shopping-changed'))
   return result

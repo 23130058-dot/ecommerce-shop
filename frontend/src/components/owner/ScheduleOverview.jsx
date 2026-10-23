@@ -1,6 +1,6 @@
 const ScheduleOverview = () => {
     return (
-        <div className="min-h-screen bg-[#F8F9FB] px-6 py-6">
+        <div className="bg-[#F8F9FB] px-6 py-6">
             {/* Breadcrumb */}
             <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
                 <span>Lịch trình & Giá</span>

@@ -168,9 +168,9 @@ export default function CheckoutPage() {
     }
   }
 
-  return <div className="min-h-screen bg-[#f7f9fc] text-gray-900">
+  return <div className="flex min-h-screen flex-col bg-[#f7f9fc] text-gray-900">
     <Header />
-    <main className="mx-auto min-h-[560px] max-w-[1120px] px-4 py-5 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-[560px] w-full max-w-[1120px] flex-1 px-4 py-5 sm:px-6 lg:px-8">
       <Stepper active={isPayment ? 1 : 0} />
       {loading ? <div className="rounded-xl border border-gray-200 bg-white px-5 py-16 text-center text-sm text-gray-500">Đang tải giỏ hàng…</div> : error && !cart.items.length ? <div className="rounded-xl border border-red-200 bg-white px-5 py-12 text-center text-sm text-red-700">{error}<p className="mt-4"><Link className="font-bold text-[#ff5500]" to="/cart">Quay lại giỏ hàng</Link></p></div> : isPayment ? (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.78fr)]">

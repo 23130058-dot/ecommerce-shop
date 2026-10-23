@@ -67,11 +67,6 @@ public class OwnerService {
 
     @Transactional
     public ProductResponse createProduct(long ownerId, CreateProductRequest request) {
-        String status = request.status() == null || request.status().isBlank()
-                ? "ACTIVE" : request.status().trim().toUpperCase(Locale.ROOT);
-        if (!List.of("ACTIVE", "INACTIVE").contains(status)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái thiết bị không hợp lệ.");
-        }
         if (request.dailyPrice() == null || request.quantity() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập giá thuê và số lượng thiết bị.");
         }
@@ -106,7 +101,7 @@ public class OwnerService {
                 """, Long.class, ownerId, categoryIds.get(0), brandId, request.name().trim(),
                 request.description() == null ? "" : request.description().trim(), request.dailyPrice(),
                 request.depositAmount() == null ? java.math.BigDecimal.ZERO : request.depositAmount(),
-                request.quantity(), status, itemType, tags);
+                request.quantity(), "PENDING", itemType, tags);
         if (!imageUrl.isBlank()) {
             jdbc.update("INSERT INTO product_images (product_id, image_url, is_primary) VALUES (?, ?, TRUE)", productId, imageUrl);
         }
@@ -116,20 +111,24 @@ public class OwnerService {
 
     @Transactional
     public ProductResponse updateProduct(long ownerId, long productId, CreateProductRequest request) {
-        Integer ownedProductCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM products WHERE id = ? AND owner_id = ?", Integer.class, productId, ownerId);
-        if (ownedProductCount == null || ownedProductCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn.");
-        }
+        String currentStatus = jdbc.query("SELECT status FROM products WHERE id = ? AND owner_id = ?",
+                (rs, rowNum) -> rs.getString("status"), productId, ownerId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn."));
         if (request.dailyPrice() == null || request.quantity() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập giá thuê và số lượng thiết bị.");
         }
 
-        String status = request.status() == null || request.status().isBlank()
+
+        String normalizedCurrentStatus = currentStatus == null ? "" : currentStatus.trim().toUpperCase(Locale.ROOT);
+        boolean awaitingApproval = List.of("PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL")
+                .contains(normalizedCurrentStatus);
+        String requestedStatus = request.status() == null || request.status().isBlank()
                 ? "ACTIVE" : request.status().trim().toUpperCase(Locale.ROOT);
-        if (!List.of("ACTIVE", "INACTIVE").contains(status)) {
+        if (!awaitingApproval && !List.of("ACTIVE", "INACTIVE").contains(requestedStatus)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái thiết bị không hợp lệ.");
         }
+        // Owners can update a pending listing, but only an admin can publish it.
+        String status = awaitingApproval ? currentStatus : requestedStatus;
         String categorySlug = request.category().trim().toLowerCase(Locale.ROOT);
         if ("drone".equals(categorySlug)) categorySlug = "studio";
         List<Long> categoryIds = jdbc.query("SELECT id FROM categories WHERE slug = ? ORDER BY id LIMIT 1",
@@ -276,9 +275,9 @@ public class OwnerService {
                        COALESCE(SUM(p.deposit_amount * ri.quantity), 0) AS deposit_amount,
                        CASE
                            WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) = 'COMPLETED') THEN 'COMPLETED'
-                           WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) IN ('CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING')) THEN 'CONFIRMED'
-                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')) THEN 'ACTIVE'
                            WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'PENDING') THEN 'PENDING'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'CONFIRMED') THEN 'CONFIRMED'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')) THEN 'ACTIVE'
                            ELSE MAX(r.status)
                        END AS status,
                        COALESCE(payment.status, 'UNPAID') AS payment_status,
@@ -343,13 +342,60 @@ public class OwnerService {
     }
 
     @Transactional
+    public void handoverBooking(long ownerId, long rentalId) {
+        int changed = jdbc.update("""
+                UPDATE rental_items ri SET status = 'ACTIVE'
+                FROM products p
+                WHERE ri.rental_id = ? AND p.id = ri.product_id AND p.owner_id = ?
+                  AND UPPER(COALESCE(ri.status, '')) = 'CONFIRMED'
+                """, rentalId, ownerId);
+
+        Integer ownedItems = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                WHERE ri.rental_id = ? AND p.owner_id = ?
+                """, Integer.class, rentalId, ownerId);
+        if (ownedItems == null || ownedItems == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
+        }
+        if (changed == 0) {
+            Integer alreadyHandedOver = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                    WHERE ri.rental_id = ? AND p.owner_id = ?
+                      AND UPPER(COALESCE(ri.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')
+                    """, Integer.class, rentalId, ownerId);
+            if (alreadyHandedOver == null || alreadyHandedOver == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Đơn thuê chưa được xác nhận hoặc không còn chờ bàn giao.");
+            }
+        }
+
+        jdbc.update("""
+                UPDATE rentals r SET status = CASE
+                    WHEN EXISTS (SELECT 1 FROM rental_items WHERE rental_id = r.id AND UPPER(COALESCE(status, '')) = 'PENDING') THEN 'PENDING'
+                    WHEN EXISTS (SELECT 1 FROM rental_items WHERE rental_id = r.id AND UPPER(COALESCE(status, '')) = 'CONFIRMED') THEN 'CONFIRMED'
+                    WHEN EXISTS (SELECT 1 FROM rental_items WHERE rental_id = r.id AND UPPER(COALESCE(status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')) THEN 'ACTIVE'
+                    ELSE r.status
+                END
+                WHERE r.id = ?
+                """, rentalId);
+
+        if (changed > 0) jdbc.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                SELECT renter_id,'BOOKING','Thiết bị đã được bàn giao',
+                       CASE WHEN UPPER(COALESCE(status, '')) = 'ACTIVE'
+                            THEN 'Owner đã bàn giao thiết bị cho đơn thuê '||COALESCE(rental_code,'#'||id::text)||'. Đơn đang ở trạng thái thuê.'
+                            ELSE 'Owner đã bàn giao thiết bị của mình cho đơn thuê '||COALESCE(rental_code,'#'||id::text)||'. Các thiết bị khác trong đơn vẫn đang chờ xử lý.' END,
+                       '/renter/orders/'||id
+                FROM rentals WHERE id = ?
+                """, rentalId);
+    }
+
+    @Transactional
     public void completeBooking(long ownerId, long rentalId) {
         Map<Long, Integer> returnedQuantities = jdbc.query("""
                 UPDATE rental_items ri SET status = 'COMPLETED'
                 FROM products p
                 WHERE ri.rental_id = ? AND p.id = ri.product_id AND p.owner_id = ?
                   AND UPPER(COALESCE(ri.status, '')) IN (
-                      'CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING',
                       'RETURN_PENDING', 'RETURN_REQUESTED', 'AWAITING_RETURN'
                   )
                 RETURNING ri.product_id, ri.quantity
@@ -370,7 +416,7 @@ public class OwnerService {
                     WHERE ri.rental_id = ? AND p.owner_id = ? AND ri.status = 'COMPLETED'
                     """, Integer.class, rentalId, ownerId);
             if (alreadyReturned == null || alreadyReturned == 0) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Thiết bị chưa được xác nhận cho thuê hoặc không thể hoàn tất.");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Thiết bị chưa có yêu cầu trả hoặc không thể hoàn tất.");
             }
             return;
         }

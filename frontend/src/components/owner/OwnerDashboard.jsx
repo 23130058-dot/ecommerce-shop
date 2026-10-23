@@ -76,7 +76,7 @@ export default function OwnerDashboard() {
     { key: 'dailyPrice', header: 'Giá thuê / ngày', className: 'whitespace-nowrap', render: (item) => money(item.dailyPrice) },
     { key: 'availableQuantity', header: 'Còn', className: 'text-center', render: (item) => item.availableQuantity },
     { key: 'currentlyRentedQuantity', header: 'Đã đặt', className: 'text-center', render: (item) => item.currentlyRentedQuantity },
-    { key: 'status', header: 'Trạng thái', render: (item) => item.status === 'ACTIVE' ? <span className="font-semibold text-emerald-700">Đang hiển thị</span> : <span className="font-semibold text-gray-500">Tạm ẩn</span> },
+    { key: 'status', header: 'Trạng thái', render: (item) => ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL'].includes(String(item.status || '').toUpperCase()) ? <span className="font-semibold text-amber-700">Chờ Admin duyệt</span> : item.status === 'ACTIVE' ? <span className="font-semibold text-emerald-700">Đang hiển thị</span> : <span className="font-semibold text-gray-500">Tạm ẩn</span> },
   ]
   const transactionColumns = [
     { key: 'title', header: 'Giao dịch', render: (item) => <><span className="font-semibold text-gray-800">{item.title}</span><span className="mt-1 block text-[10px] text-gray-400">{item.subtitle || ''}</span></> },
