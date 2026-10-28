@@ -53,7 +53,7 @@ public class OwnerService {
                           'RETURN_PENDING', 'RETURN_REQUESTED', 'AWAITING_RETURN'
                       )
                 ) rented ON TRUE
-                WHERE p.owner_id = ?
+                WHERE p.owner_id = ? AND UPPER(COALESCE(p.status, '')) <> 'DELETED'
                 ORDER BY p.created_at DESC, p.id DESC
                 """, (rs, rowNum) -> new ProductResponse(
                 rs.getLong("id"), rs.getString("name"), rs.getString("item_type"),
@@ -67,6 +67,7 @@ public class OwnerService {
 
     @Transactional
     public ProductResponse createProduct(long ownerId, CreateProductRequest request) {
+        requireVerifiedIdentity(ownerId);
         if (request.dailyPrice() == null || request.quantity() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập giá thuê và số lượng thiết bị.");
         }
@@ -120,6 +121,9 @@ public class OwnerService {
         String currentStatus = jdbc.query("SELECT status FROM products WHERE id = ? AND owner_id = ?",
                 (rs, rowNum) -> rs.getString("status"), productId, ownerId).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn."));
+        if ("DELETED".equalsIgnoreCase(currentStatus)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Thiết bị này đã được gỡ khỏi gian hàng.");
+        }
         if (request.dailyPrice() == null || request.quantity() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập giá thuê và số lượng thiết bị.");
         }
@@ -135,6 +139,9 @@ public class OwnerService {
         }
         // Owners can update a pending listing, but only an admin can publish it.
         String status = awaitingApproval ? currentStatus : requestedStatus;
+        if ("ACTIVE".equals(status) && !"ACTIVE".equalsIgnoreCase(currentStatus)) {
+            requireVerifiedIdentity(ownerId);
+        }
         String categorySlug = request.category().trim().toLowerCase(Locale.ROOT);
         if ("drone".equals(categorySlug)) categorySlug = "studio";
         List<Long> categoryIds = jdbc.query("SELECT id FROM categories WHERE slug = ? ORDER BY id LIMIT 1",
@@ -187,6 +194,37 @@ public class OwnerService {
 
         return getProducts(ownerId).stream().filter(product -> product.id().equals(productId)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tải được thiết bị vừa cập nhật."));
+    }
+
+    @Transactional
+    public void deleteProduct(long ownerId, long productId) {
+        String status = jdbc.query("SELECT status FROM products WHERE id = ? AND owner_id = ?",
+                (rs, rowNum) -> rs.getString("status"), productId, ownerId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn."));
+        if ("DELETED".equalsIgnoreCase(status)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Thiết bị này đã được gỡ khỏi gian hàng.");
+        }
+
+        Integer activeRentals = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM rental_items ri JOIN rentals r ON r.id = ri.rental_id
+                WHERE ri.product_id = ?
+                  AND UPPER(COALESCE(NULLIF(ri.status, ''), r.status, '')) IN
+                      ('PENDING', 'CONFIRMED', 'ACTIVE', 'IN_PROGRESS', 'RENTING',
+                       'RETURN_PENDING', 'RETURN_REQUESTED', 'AWAITING_RETURN')
+                """, Integer.class, productId);
+        if (activeRentals != null && activeRentals > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Không thể gỡ thiết bị đang có đơn chờ xử lý hoặc đang được thuê.");
+        }
+
+        // Remove cart reservations for this listing so its stock is released immediately.
+        jdbc.update("DELETE FROM cart_items WHERE product_id = ?", productId);
+        int changed = jdbc.update("UPDATE products SET status = 'DELETED' WHERE id = ? AND owner_id = ?",
+                productId, ownerId);
+        if (changed == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -265,7 +303,7 @@ public class OwnerService {
                 JOIN products p ON p.id = ri.product_id
                 WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
                 """, Long.class, from, to, ownerId);
-        Long productCount = jdbc.queryForObject("SELECT COUNT(*) FROM products WHERE owner_id = ?", Long.class, ownerId);
+        Long productCount = jdbc.queryForObject("SELECT COUNT(*) FROM products WHERE owner_id = ? AND UPPER(COALESCE(status, '')) <> 'DELETED'", Long.class, ownerId);
         return new RevenueResponse(from, to, totalRevenue, paidRentalCount == null ? 0 : paidRentalCount,
                 productCount == null ? 0 : productCount, daily, productRevenue);
     }
@@ -444,5 +482,14 @@ public class OwnerService {
                        'Quy trình hoàn trả cho đơn '||COALESCE(rental_code,'#'||id::text)||' đã được cập nhật.','/renter/orders/'||id
                 FROM rentals WHERE id=?
                 """,rentalId);
+    }
+
+    private void requireVerifiedIdentity(long userId) {
+        Integer approved = jdbc.queryForObject("SELECT COUNT(*) FROM account_verifications WHERE user_id = ? AND identity_status = 'APPROVED'",
+                Integer.class, userId);
+        if (approved == null || approved == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Bạn cần gửi CCCD và chờ Admin duyệt trong Cài đặt tài khoản → Xác minh cá nhân trước khi đăng thiết bị.");
+        }
     }
 }

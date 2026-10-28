@@ -12,6 +12,7 @@ import com.example.ecommerceshop.shopping.ShoppingDtos.RentalSummary;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CurrentRentalItem;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatMessageResponse;
+import com.example.ecommerceshop.shopping.ShoppingDtos.RenterChatConversationResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.SendRentalChatMessageRequest;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RenterNotificationResponse;
 import com.example.ecommerceshop.marketplace.MarketplaceService;
@@ -169,6 +170,11 @@ public class ShoppingController {
     public java.util.Map<String,Long> dispute(@AuthenticationPrincipal Jwt jwt,@PathVariable long rentalId,
                                               @Valid @RequestBody CreateRentalDisputeRequest request) {
         return java.util.Map.of("id",marketplaceService.createRentalDispute(userId(jwt),rentalId,request));
+    }
+
+    @GetMapping("/chats")
+    public List<RenterChatConversationResponse> renterChats(@AuthenticationPrincipal Jwt jwt) {
+        return shoppingService.getRenterChatConversations(userId(jwt));
     }
 
     @GetMapping("/rentals/{rentalId}/chats")

@@ -58,6 +58,12 @@ public class OwnerController {
         return ownerService.updateProduct(userId(jwt), productId, request);
     }
 
+    @DeleteMapping("/products/{productId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteProduct(@AuthenticationPrincipal Jwt jwt, @PathVariable long productId) {
+        ownerService.deleteProduct(userId(jwt), productId);
+    }
+
     @GetMapping("/revenue")
     public RevenueResponse revenue(@AuthenticationPrincipal Jwt jwt,
                                    @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

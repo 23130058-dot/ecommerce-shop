@@ -71,6 +71,15 @@ export const getCurrentRentalItems = (options) => request('/renter/current-renta
 export const getRentals = (options) => request('/rentals', options)
 export const getRenterNotifications = (options) => request('/notifications', options)
 export const markRenterNotificationsRead = () => request('/notifications/read-all', { method: 'PATCH' })
+export const getRenterChats = (options) => request('/chats', options)
+export const getProductChats = (options) => fetchProductChat('/api/product-chats', options)
+export const getProductChatMessages = (productId, peerId, options) => fetchProductChat(
+  `/api/product-chats/${encodeURIComponent(productId)}/${encodeURIComponent(peerId)}/messages`, options,
+)
+export const sendProductChatMessage = (productId, peerId, body) => fetchProductChat(
+  `/api/product-chats/${encodeURIComponent(productId)}/${encodeURIComponent(peerId)}/messages`,
+  { method: 'POST', body: { body } },
+)
 export const getRental = (rentalId, options) => request(`/rentals/${encodeURIComponent(rentalId)}`, options)
 export const cancelRental = (rentalId) => request(`/rentals/${encodeURIComponent(rentalId)}/cancel`, { method: 'PATCH' })
 export const requestRentalReturn = (rentalId) => request(`/rentals/${encodeURIComponent(rentalId)}/return`, { method: 'POST' })
@@ -80,3 +89,30 @@ export const getRentalChatMessages = (rentalId, ownerId, options) => request(`/r
 export const sendRentalChatMessage = (rentalId, ownerId, body) => request(`/rentals/${encodeURIComponent(rentalId)}/chats/${encodeURIComponent(ownerId)}/messages`, {
   method: 'POST', body: { body },
 })
+
+async function fetchProductChat(path, { method = 'GET', body, signal } = {}) {
+  const auth = getStoredAuth()
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      signal,
+      headers: {
+        ...(auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}),
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  } catch (error) {
+    if (error.name === 'AbortError') throw error
+    throw new Error('Không kết nối được backend. Hãy kiểm tra backend đang chạy ở cổng 8080.', { cause: error })
+  }
+  if (response.status === 204) return null
+  const result = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = [result?.detail, result?.message, result?.error]
+      .find((item) => typeof item === 'string' && item.trim() && item.trim().toLowerCase() !== 'forbidden')
+    throw new Error(message || `Yêu cầu thất bại (${response.status}).`)
+  }
+  return result
+}

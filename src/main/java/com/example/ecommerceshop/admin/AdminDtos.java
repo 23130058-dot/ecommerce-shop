@@ -155,6 +155,7 @@ public final class AdminDtos {
             long completedRentals,
             long pendingDevices,
             long openDisputes,
+            long pendingVerifications,
             BigDecimal revenueThisMonth,
             List<MonthlyRevenue> monthlyRevenue,
             List<CategoryRevenue> revenueByCategory,

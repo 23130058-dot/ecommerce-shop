@@ -11,6 +11,7 @@ import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import AdminProductsPage from './pages/AdminProductsPage.jsx'
 import AdminOrdersPage from './pages/AdminOrdersPage.jsx'
 import AdminMarketplacePage from './pages/AdminMarketplacePage.jsx'
+import AdminVerificationsPage from './pages/AdminVerificationsPage.jsx'
 import StoresPage from './pages/StoresPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import WishlistPage from './pages/WishlistPage.jsx'
@@ -20,6 +21,7 @@ import CheckoutPage from './pages/CheckoutPage.jsx'
 import OrderConfirmationPage from './pages/OrderConfirmationPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
 import ToastViewport from './components/layout/ToastViewport.jsx'
+import ChatWidget from './components/layout/ChatWidget.jsx'
 
 function AdminOnly({ children }) {
   const location = useLocation()
@@ -63,6 +65,7 @@ function App() {
         <Route path="/admin/devices" element={<Navigate to="/admin/products" replace />} />
         <Route path="/admin/orders" element={<AdminOnly><AdminOrdersPage /></AdminOnly>} />
         <Route path="/admin/disputes" element={<AdminOnly><AdminMarketplacePage /></AdminOnly>} />
+        <Route path="/admin/verifications" element={<AdminOnly><AdminVerificationsPage /></AdminOnly>} />
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />
@@ -73,6 +76,7 @@ function App() {
         <Route path="/renter/orders/:rentalId" element={<OrderConfirmationPage />} />
         <Route path="/renter/*" element={<RenterPage />} />
       </Routes>
+      <ChatWidget />
     </BrowserRouter>
   )
 }

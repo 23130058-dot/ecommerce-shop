@@ -4,6 +4,7 @@ import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
+import { getAccountVerification, getAccountWallet } from '../services/accountApi.js'
 import { checkoutCart, getCart, updateCartItem } from '../services/shoppingApi.js'
 import { showToast } from '../services/toast.js'
 
@@ -51,7 +52,7 @@ function Field({ label, ...props }) {
   </label>
 }
 
-function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, isPayment }) {
+function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, isPayment, paymentMethod, canRent, canPay = true, verificationLoading }) {
   const deliveryFee = deliveryMethod === 'HOME' ? DELIVERY_FEE : 0
   const total = Number(cart.rentalTotal || 0) + Number(cart.depositTotal || 0) + Number(cart.serviceFee || 0) + deliveryFee
   return <aside className="h-fit rounded-xl border border-gray-200 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.025)] sm:p-5">
@@ -65,15 +66,19 @@ function Summary({ cart, deliveryMethod, onContinue, busy, onSubmitPayment, isPa
     </div>
     <div className="my-4 border-t border-gray-100" />
     <div className="space-y-2 text-sm">
-      <div className="flex justify-between gap-3 text-gray-500"><span>Tạm tính tiền thuê</span><b className="text-gray-800">{money(cart.rentalTotal)}</b></div>
+      {Number(cart.studentDiscountAmount) > 0 ? <>
+        <div className="flex justify-between gap-3 text-gray-500"><span>Tạm tính tiền thuê</span><b className="text-gray-800">{money(cart.rentalSubtotal)}</b></div>
+        <div className="flex justify-between gap-3 text-emerald-700"><span>Ưu đãi học sinh / sinh viên (15%)</span><b>−{money(cart.studentDiscountAmount)}</b></div>
+        <div className="flex justify-between gap-3 text-gray-500"><span>Tiền thuê sau ưu đãi</span><b className="text-gray-800">{money(cart.rentalTotal)}</b></div>
+      </> : <div className="flex justify-between gap-3 text-gray-500"><span>Tạm tính tiền thuê</span><b className="text-gray-800">{money(cart.rentalTotal)}</b></div>}
       <div className="flex justify-between gap-3 text-gray-500"><span>Tiền cọc thiết bị</span><b className="text-gray-800">{money(cart.depositTotal)}</b></div>
       <div className="flex justify-between gap-3 text-gray-500"><span>Phí dịch vụ (5%)</span><b className="text-gray-800">{money(cart.serviceFee)}</b></div>
       <div className="flex justify-between gap-3 text-gray-500"><span>Phí vận chuyển</span><b className={deliveryFee ? 'text-gray-800' : 'text-emerald-600'}>{deliveryFee ? money(deliveryFee) : 'Miễn phí'}</b></div>
     </div>
     <div className="mt-4 flex items-end justify-between border-t border-gray-100 pt-4"><span className="text-sm font-bold">Tổng thanh toán</span><span className="text-xl font-extrabold text-[#ff5500]">{money(total)}</span></div>
     <p className="mt-1 text-right text-xs text-gray-400">Đã bao gồm tiền cọc {money(cart.depositTotal)}</p>
-    {isPayment ? <>
-      <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-wait disabled:bg-gray-300" disabled={busy} onClick={onSubmitPayment} type="button">{busy ? 'Đang ghi nhận thanh toán…' : 'Đồng ý thanh toán →'}</button>
+    {!canRent ? <Link className="mt-4 flex min-h-11 w-full items-center justify-center rounded-lg bg-amber-700 px-4 py-3 text-center text-sm font-bold text-white transition hover:bg-amber-800" to="/account/settings/verification">{verificationLoading ? 'Đang kiểm tra CCCD…' : 'Xác minh CCCD để tiếp tục'}</Link> : isPayment ? <>
+      <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-gray-300" disabled={busy || !canPay} onClick={onSubmitPayment} type="button">{busy ? 'Đang ghi nhận thanh toán…' : paymentMethod === 'WALLET' && !canPay ? 'Kiểm tra số dư ví' : paymentMethod === 'WALLET' ? 'Thanh toán bằng ví →' : 'Đồng ý thanh toán mô phỏng →'}</button>
     </> : <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:bg-gray-300" disabled={busy} onClick={onContinue} type="button">Tiếp tục thanh toán →</button>}
     <Link className="mt-3 block text-center text-xs font-medium text-gray-500 hover:text-[#ff5500]" to="/cart">Quay lại giỏ hàng</Link>
   </aside>
@@ -84,13 +89,18 @@ export default function CheckoutPage() {
   const navigate = useNavigate()
   const auth = getStoredAuth()
   const isPayment = location.pathname.endsWith('/payment')
-  const [cart, setCart] = useState({ items: [], rentalTotal: 0, depositTotal: 0, serviceFee: 0, total: 0 })
+  const [cart, setCart] = useState({ items: [], rentalSubtotal: 0, studentDiscountAmount: 0, studentDiscountEligible: false, rentalTotal: 0, depositTotal: 0, serviceFee: 0, total: 0 })
+  const [verification, setVerification] = useState(null)
+  const [verificationLoading, setVerificationLoading] = useState(true)
+  const [verificationError, setVerificationError] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [walletOverview, setWalletOverview] = useState(null)
+  const [walletError, setWalletError] = useState('')
   const [draft, setDraft] = useState(() => ({
     startDate: localDate(1), endDate: localDate(4), deliveryMethod: 'HOME', deliveryAddress: '', district: '', city: '',
-    contactName: auth?.user?.fullName || '', contactPhone: auth?.user?.phone || '', contactEmail: auth?.user?.email || '',
+    contactName: auth?.user?.fullName || '', contactPhone: auth?.user?.phone || '', contactEmail: auth?.user?.email || '', paymentMethod: 'MANUAL',
     ...readDraft(),
   }))
 
@@ -113,6 +123,23 @@ export default function CheckoutPage() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    let active = true
+    getAccountVerification()
+      .then((result) => { if (active) setVerification(result) })
+      .catch((requestError) => { if (active) setVerificationError(requestError.message) })
+      .finally(() => { if (active) setVerificationLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!isPayment || !auth?.accessToken) return undefined
+    let active = true
+    getAccountWallet().then((overview) => { if (active) setWalletOverview(overview) })
+      .catch((loadError) => { if (active) setWalletError(loadError.message) })
+    return () => { active = false }
+  }, [isPayment, auth?.accessToken])
+
   const minEndDate = useMemo(() => {
     const start = draft.startDate ? new Date(`${draft.startDate}T12:00:00`) : new Date()
     start.setDate(start.getDate() + 1)
@@ -122,10 +149,20 @@ export default function CheckoutPage() {
   if (!auth) return <Navigate to="/login" replace state={{ from: location }} />
   if (isPayment && !readDraft().startDate) return <Navigate to="/checkout" replace />
 
+  const identityVerified = verification?.identityStatus === 'APPROVED'
+  const walletRequiredAmount = Number(cart.rentalTotal || 0) + Number(cart.depositTotal || 0) + Number(cart.serviceFee || 0) + (draft.deliveryMethod === 'HOME' ? DELIVERY_FEE : 0)
+  const walletCanPay = draft.paymentMethod !== 'WALLET' || Boolean(walletOverview && !walletError && Number(walletOverview.availableBalance) >= walletRequiredAmount)
+
   const updateDraft = (key, value) => setDraft((current) => ({ ...current, [key]: value }))
+  const selectPaymentMethod = (paymentMethod) => {
+    const updatedDraft = { ...draft, paymentMethod }
+    setDraft(updatedDraft)
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(updatedDraft))
+  }
 
   const continueToPayment = async (event) => {
     event.preventDefault()
+    if (!identityVerified) { showToast('Cần gửi CCCD và chờ Admin duyệt trước khi đặt thuê.', 'warning'); return }
     if (!cart.items.length) { showToast('Giỏ hàng đang trống.', 'warning'); return }
     if (!draft.startDate || !draft.endDate || draft.endDate <= draft.startDate) { showToast('Vui lòng chọn ngày kết thúc sau ngày bắt đầu.', 'warning'); return }
     if (!draft.contactName.trim() || !draft.contactPhone.trim()) { showToast('Vui lòng nhập họ tên và số điện thoại người thuê.', 'warning'); return }
@@ -149,6 +186,10 @@ export default function CheckoutPage() {
   }
 
   const submitPayment = async () => {
+    if (!identityVerified) { showToast('Cần gửi CCCD và chờ Admin duyệt trước khi thanh toán.', 'warning'); return }
+    if (draft.paymentMethod === 'WALLET' && walletError) { showToast(walletError, 'error'); return }
+    if (draft.paymentMethod === 'WALLET' && !walletOverview) { showToast('Chưa tải được số dư ví. Vui lòng thử lại.', 'warning'); return }
+    if (draft.paymentMethod === 'WALLET' && Number(walletOverview.availableBalance) < walletRequiredAmount) { showToast('Số dư ví không đủ cho tiền thuê, tiền cọc và phí vận chuyển.', 'warning'); return }
     setBusy(true)
     try {
       const result = await checkoutCart({
@@ -159,6 +200,7 @@ export default function CheckoutPage() {
         contactName: draft.contactName.trim(),
         contactPhone: draft.contactPhone.trim(),
         contactEmail: draft.contactEmail.trim(),
+        paymentMethod: draft.paymentMethod,
       })
       navigate(`/checkout/complete/${result.rentalId}`, { state: { created: true } })
     } catch (actionError) {
@@ -172,19 +214,22 @@ export default function CheckoutPage() {
     <Header />
     <main className="mx-auto min-h-[560px] w-full max-w-[1120px] flex-1 px-4 py-5 sm:px-6 lg:px-8">
       <Stepper active={isPayment ? 1 : 0} />
+      {!identityVerified && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900"><div><p className="font-bold">Cần Admin duyệt CCCD để đặt thuê</p><p className="mt-1 text-xs leading-5">Tải giấy tờ trong cài đặt tài khoản. Sau khi được duyệt, bạn có thể tiếp tục đơn này.{verificationError ? ` ${verificationError}` : ''}</p></div><Link className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-amber-700 px-3.5 text-xs font-bold text-white hover:bg-amber-800" to="/account/settings/verification">{verificationLoading ? 'Đang kiểm tra…' : 'Xác minh CCCD'}</Link></div>}
       {loading ? <div className="rounded-xl border border-gray-200 bg-white px-5 py-16 text-center text-sm text-gray-500">Đang tải giỏ hàng…</div> : error && !cart.items.length ? <div className="rounded-xl border border-red-200 bg-white px-5 py-12 text-center text-sm text-red-700">{error}<p className="mt-4"><Link className="font-bold text-[#ff5500]" to="/cart">Quay lại giỏ hàng</Link></p></div> : isPayment ? (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.78fr)]">
           <div>
             <Link className="mb-3 inline-flex text-sm text-gray-500 hover:text-[#ff5500]" to="/checkout">← Quay lại thông tin thuê</Link>
-            <Panel title="Xác nhận thanh toán">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm font-bold text-emerald-800">Thanh toán mô phỏng</p>
-                <p className="mt-1 text-sm leading-6 text-emerald-700">Khi bạn nhấn đồng ý, hệ thống sẽ ghi nhận đơn là đã thanh toán và gửi yêu cầu thuê đến chủ thiết bị. Chưa cần nhập thông tin thẻ hay chọn phương thức.</p>
+            <Panel title="Phương thức thanh toán">
+              <div className="space-y-3">
+                <button aria-pressed={draft.paymentMethod === 'MANUAL'} className={`w-full rounded-xl border p-4 text-left transition ${draft.paymentMethod === 'MANUAL' ? 'border-[#ff5500] bg-orange-50/50 ring-2 ring-orange-100' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => selectPaymentMethod('MANUAL')} type="button"><span className="flex items-center justify-between gap-3"><span><b className="block text-sm text-gray-900">Thanh toán mô phỏng</b><span className="mt-1 block text-xs leading-5 text-gray-500">Ghi nhận thành công để trình diễn luồng đặt thuê; không trừ số dư.</span></span><span className={`size-4 shrink-0 rounded-full border ${draft.paymentMethod === 'MANUAL' ? 'border-[5px] border-orange-500' : 'border-gray-300'}`} /></span></button>
+                <button aria-pressed={draft.paymentMethod === 'WALLET'} className={`w-full rounded-xl border p-4 text-left transition ${draft.paymentMethod === 'WALLET' ? 'border-[#ff5500] bg-orange-50/50 ring-2 ring-orange-100' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => selectPaymentMethod('WALLET')} type="button"><span className="flex items-center justify-between gap-3"><span><b className="block text-sm text-gray-900">Ví LensRent</b><span className="mt-1 block text-xs leading-5 text-gray-500">Số dư khả dụng: {walletOverview ? money(walletOverview.availableBalance) : 'Đang tải…'}</span></span><span className={`size-4 shrink-0 rounded-full border ${draft.paymentMethod === 'WALLET' ? 'border-[5px] border-orange-500' : 'border-gray-300'}`} /></span></button>
               </div>
+              {walletError && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{walletError}</p>}
+              {draft.paymentMethod === 'WALLET' && walletOverview && Number(walletOverview.availableBalance) < walletRequiredAmount && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800">Số dư ví chưa đủ cho cả phí vận chuyển. <Link className="font-bold underline" to="/account/settings/payments">Nạp ví mô phỏng trong Cài đặt tài khoản</Link>, rồi quay lại thanh toán.</p>}
               <div className="mt-5 rounded-lg border border-orange-100 bg-[#fff6ee] p-4 text-sm leading-6 text-orange-900"><b className="text-[#ed4b0a]">Lưu ý về tiền đặt cọc</b><p className="mt-1">Tiền cọc được ghi nhận trong đơn và hoàn lại sau khi thiết bị được bàn giao, kiểm tra.</p></div>
             </Panel>
           </div>
-          <Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment onSubmitPayment={submitPayment} busy={busy} />
+          <Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment onSubmitPayment={submitPayment} busy={busy} paymentMethod={draft.paymentMethod} canRent={identityVerified} canPay={walletCanPay} verificationLoading={verificationLoading} />
         </div>
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.78fr)]">
@@ -224,7 +269,7 @@ export default function CheckoutPage() {
             </div>
             <button className="min-h-11 w-full rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 lg:hidden" disabled={busy} type="submit">{busy ? 'Đang lưu thông tin…' : 'Tiếp tục thanh toán →'}</button>
           </form>
-          <div className="lg:sticky lg:top-5"><Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment={false} onContinue={continueToPayment} busy={busy} /></div>
+          <div className="lg:sticky lg:top-5"><Summary cart={cart} deliveryMethod={draft.deliveryMethod} isPayment={false} onContinue={continueToPayment} busy={busy} canRent={identityVerified} verificationLoading={verificationLoading} /></div>
         </div>
       )}
     </main>

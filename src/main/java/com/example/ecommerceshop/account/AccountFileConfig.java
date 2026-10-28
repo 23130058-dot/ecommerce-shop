@@ -22,5 +22,11 @@ public class AccountFileConfig implements WebMvcConfigurer {
         if (!location.endsWith("/")) location += "/";
         registry.addResourceHandler("/uploads/avatars/**")
                 .addResourceLocations(location);
+
+        Path storefrontDirectory = Path.of(uploadDirectory, "storefront").toAbsolutePath().normalize();
+        String storefrontLocation = storefrontDirectory.toUri().toString();
+        if (!storefrontLocation.endsWith("/")) storefrontLocation += "/";
+        registry.addResourceHandler("/uploads/storefront/**")
+                .addResourceLocations(storefrontLocation);
     }
 }

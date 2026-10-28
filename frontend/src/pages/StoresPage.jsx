@@ -4,15 +4,17 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import { createMarketplaceReport, getStore, getStores } from '../services/productApi.js'
-import { getStoredAuth } from '../services/authApi.js'
+import { API_BASE_URL, getStoredAuth } from '../services/authApi.js'
 import { showToast } from '../services/toast.js'
 
 const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
+const mediaUrl = (value) => value?.startsWith('/uploads/') ? `${API_BASE_URL}${value}` : value
+const externalUrl = (value) => /^https?:\/\//i.test(value || '') ? value : ''
 
 function StoreCard({ store }) {
   return <Link to={`/stores/${store.ownerId}`} className="group rounded-2xl border border-gray-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
     <div className="flex items-center gap-4">
-      {store.avatarUrl ? <img className="size-14 rounded-full object-cover" src={store.avatarUrl} alt="" /> : <span className="flex size-14 items-center justify-center rounded-full bg-orange-100 text-xl font-bold text-orange-600">{(store.storeName || 'L').slice(0,1)}</span>}
+      {(store.logoUrl || store.avatarUrl) ? <img className="size-14 rounded-full object-cover" src={mediaUrl(store.logoUrl || store.avatarUrl)} alt="" /> : <span className="flex size-14 items-center justify-center rounded-full bg-orange-100 text-xl font-bold text-orange-600">{(store.storeName || 'L').slice(0,1)}</span>}
       <div className="min-w-0"><h2 className="truncate text-lg font-bold text-gray-900 group-hover:text-[#ed4b0a]">{store.storeName}</h2><p className="truncate text-sm text-gray-500">{store.ownerName}{store.city ? ` · ${store.city}` : ''}</p></div>
     </div>
     <p className="mt-4 line-clamp-2 min-h-10 text-sm leading-5 text-gray-600">{store.description || 'Gian hàng thiết bị trên LensRent.'}</p>
@@ -69,10 +71,37 @@ export default function StoresPage() {
       {ownerId ? <>
         <Link to="/stores" className="text-sm font-semibold text-gray-500 hover:text-[#ff5500]">← Tất cả gian hàng</Link>
         {loading ? <div className="mt-5 rounded-xl bg-white p-12 text-center text-gray-500">Đang tải gian hàng…</div> : error ? <div className="mt-5 rounded-xl border border-red-200 bg-white p-8 text-red-700">{error}</div> : store && <>
-          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-6 sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-center gap-4">{store.avatarUrl ? <img className="size-16 rounded-full object-cover" src={store.avatarUrl} alt="" /> : <span className="flex size-16 items-center justify-center rounded-full bg-orange-100 text-2xl font-bold text-orange-600">{store.storeName.slice(0,1)}</span>}<div><p className="text-xs font-bold uppercase tracking-wider text-[#ff5500]">Gian hàng LensRent</p><h1 className="mt-1 text-2xl font-extrabold">{store.storeName}</h1><p className="mt-1 text-sm text-gray-500">{store.ownerName}{store.city ? ` · ${store.city}` : ''}</p></div></div><button onClick={() => setReportTarget(reportTarget === 'store' ? null : 'store')} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:border-orange-200 hover:text-[#ff5500]">Báo cáo gian hàng</button></div>
-            <p className="mt-5 max-w-3xl text-sm leading-6 text-gray-600">{store.description || 'Gian hàng thiết bị trên LensRent.'}</p><div className="mt-5 flex gap-6 text-sm"><span><b>{store.products?.length || 0}</b> thiết bị đang đăng</span><span>★ <b>{Number(store.averageRating || 0).toFixed(1)}</b></span><span><b>{store.rentalCount || 0}</b> lượt thuê thành công</span></div>
+          <section className="mt-5 rounded-2xl border border-gray-200 bg-white">
+            <div className="relative isolate">
+              <div className="relative h-36 overflow-hidden rounded-t-2xl bg-gradient-to-r from-orange-100 via-orange-50 to-slate-100 sm:h-52">
+                {store.coverImageUrl && <img alt="Ảnh bìa gian hàng" className="size-full object-cover" src={mediaUrl(store.coverImageUrl)} />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+              </div>
+              {(store.logoUrl || store.avatarUrl) ? (
+                <img className="absolute bottom-0 left-5 z-10 size-20 translate-y-1/2 rounded-2xl border-4 border-white bg-white object-cover shadow sm:left-8 sm:size-24" src={mediaUrl(store.logoUrl || store.avatarUrl)} alt={`${store.storeName} logo`} />
+              ) : (
+                <span className="absolute bottom-0 left-5 z-10 flex size-20 translate-y-1/2 items-center justify-center rounded-2xl border-4 border-white bg-orange-100 text-2xl font-bold text-orange-600 shadow sm:left-8 sm:size-24 sm:text-3xl">{store.storeName.slice(0,1)}</span>
+              )}
+            </div>
+            <div className="p-5 pt-14 sm:p-8 sm:pt-16">
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                <div className="min-w-0 pl-[92px] sm:pl-[124px]">
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#ff5500]">Gian hàng LensRent</p>
+                  <h1 className="mt-1 break-words text-xl font-extrabold sm:text-2xl">{store.storeName}</h1>
+                  <p className="mt-1 text-sm text-gray-500">{store.ownerName}{store.city ? ` · ${store.city}` : ''}</p>
+                </div>
+                <button onClick={() => setReportTarget(reportTarget === 'store' ? null : 'store')} className="shrink-0 self-end rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:border-orange-200 hover:text-[#ff5500] sm:self-start">Báo cáo gian hàng</button>
+              </div>
+              <p className="mt-5 max-w-3xl text-sm leading-6 text-gray-600">{store.description || 'Gian hàng thiết bị trên LensRent.'}</p><div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm"><span><b>{store.products?.length || 0}</b> thiết bị đang đăng</span><span>★ <b>{Number(store.averageRating || 0).toFixed(1)}</b></span><span><b>{store.rentalCount || 0}</b> lượt thuê thành công</span></div>
+              {(store.address || store.contactPhone || store.contactEmail || store.businessHours || externalUrl(store.facebookUrl) || externalUrl(store.instagramUrl)) && <div className="mt-5 grid gap-3 rounded-xl bg-gray-50 p-4 text-sm text-gray-600 sm:grid-cols-2">
+                {store.address && <p><b className="text-gray-800">Địa chỉ nhận thiết bị:</b> {store.address}</p>}
+                {store.businessHours && <p><b className="text-gray-800">Giờ hoạt động:</b> {store.businessHours}</p>}
+                {store.contactPhone && <p><b className="text-gray-800">Điện thoại:</b> <a className="text-[#ff5500] hover:underline" href={`tel:${store.contactPhone}`}>{store.contactPhone}</a></p>}
+                {store.contactEmail && <p><b className="text-gray-800">Email:</b> <a className="text-[#ff5500] hover:underline" href={`mailto:${store.contactEmail}`}>{store.contactEmail}</a></p>}
+                {(externalUrl(store.facebookUrl) || externalUrl(store.instagramUrl)) && <p className="flex gap-4 sm:col-span-2">{externalUrl(store.facebookUrl) && <a className="font-semibold text-[#ff5500] hover:underline" href={externalUrl(store.facebookUrl)} target="_blank" rel="noreferrer">Facebook ↗</a>}{externalUrl(store.instagramUrl) && <a className="font-semibold text-[#ff5500] hover:underline" href={externalUrl(store.instagramUrl)} target="_blank" rel="noreferrer">Instagram ↗</a>}</p>}
+              </div>}
             {reportTarget === 'store' && <ReportForm ownerId={store.ownerId} onClose={() => setReportTarget(null)} />}
+            </div>
           </section>
           <div className="mt-7 flex items-end justify-between gap-3"><div><h2 className="text-xl font-extrabold">Thiết bị đang cho thuê</h2><p className="mt-1 text-sm text-gray-500">Dữ liệu và giá thuê được lấy từ danh sách sản phẩm đang hiển thị.</p></div><span className="text-sm text-gray-500">{store.products?.length || 0} thiết bị</span></div>
           {store.products?.length ? <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{store.products.map((product) => <article className="overflow-hidden rounded-xl border border-gray-200 bg-white" key={product.id}><Link to={`/products/${product.id}`} className="flex h-52 items-center justify-center bg-gray-50 p-4"><img className="max-h-full max-w-full object-contain" src={resolveProductImage(product.imageKey)} alt={product.name} /></Link><div className="p-4"><p className="text-xs font-semibold uppercase text-gray-400">{product.category || product.type}</p><Link className="mt-1 block font-bold hover:text-[#ff5500]" to={`/products/${product.id}`}>{product.name}</Link><p className="mt-2 text-xs text-gray-500">★ {Number(product.rating || 0).toFixed(1)} · {product.availableQuantity} sẵn sàng · {product.rentalCount} lượt thuê</p><div className="mt-3 flex items-center justify-between"><b className="text-[#ff5500]">{money(product.price)} <small className="font-normal text-gray-400">/ ngày</small></b><div className="flex gap-2"><Link to={`/products/${product.id}`} className="rounded-lg bg-[#ff5500] px-3 py-2 text-xs font-bold text-white">Chi tiết</Link><button onClick={() => setReportTarget(reportTarget === product.id ? null : product.id)} className="rounded-lg border border-gray-200 px-2.5 py-2 text-xs">Báo cáo</button></div></div>{reportTarget === product.id && <ReportForm ownerId={store.ownerId} productId={product.id} onClose={() => setReportTarget(null)} />}</div></article>)}</div> : <div className="mt-4 rounded-xl border border-dashed bg-white p-10 text-center text-sm text-gray-500">Gian hàng chưa có thiết bị đang hiển thị.</div>}

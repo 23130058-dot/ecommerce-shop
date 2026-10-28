@@ -45,6 +45,7 @@ const primaryLinks = [
   { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
   { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
   { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes' },
+  { label: 'Xác minh tài khoản', icon: 'shield', to: '/admin/verifications' },
 ]
 
 const systemLinks = [
@@ -100,10 +101,9 @@ export default function AdminLayout({ children }) {
           <nav className="space-y-1 pt-4">{primaryLinks.map((item) => <NavigationItem key={item.label} item={item} pathname={pathname} />)}</nav>
           <div className="mt-6 px-3 text-[9px] font-bold tracking-[0.1em] text-gray-400">HỆ THỐNG</div>
           <nav className="mt-2 space-y-1">{systemLinks.map((item) => <NavigationItem key={item.label} item={item} pathname={pathname} />)}</nav>
-          <div className="mt-6 rounded-lg border border-gray-100 p-3">
-            <p className="text-[9px] font-bold tracking-[0.08em] text-gray-400">HỆ THỐNG TRẠNG THÁI</p>
-            <div className="mt-3 flex items-center justify-between text-[10px]"><span className="text-gray-500">Uptime (30 ngày)</span><strong className="text-emerald-600">99.98%</strong></div>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full w-[99%] rounded-full bg-emerald-500" /></div>
+          <div className="mt-6 rounded-lg border border-orange-100 bg-orange-50/60 p-3">
+            <p className="text-[9px] font-bold tracking-[0.08em] text-orange-700">LƯU Ý QUẢN TRỊ</p>
+            <p className="mt-2 text-[10px] leading-4 text-gray-600">CCCD và giấy tờ học sinh chỉ được xem để xét duyệt trong khu vực Admin.</p>
           </div>
         </aside>
         <div className="min-w-0 flex-1">

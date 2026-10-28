@@ -17,6 +17,7 @@ import com.example.ecommerceshop.admin.AdminDtos.RevenueTrendResponse;
 import com.example.ecommerceshop.admin.AdminDtos.DailyRevenue;
 import com.example.ecommerceshop.user.User;
 import com.example.ecommerceshop.user.UserRepository;
+import com.example.ecommerceshop.wallet.WalletService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,10 +40,12 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final WalletService walletService;
 
-    public AdminService(UserRepository userRepository, JdbcTemplate jdbcTemplate) {
+    public AdminService(UserRepository userRepository, JdbcTemplate jdbcTemplate, WalletService walletService) {
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.walletService = walletService;
     }
 
     @Transactional(readOnly = true)
@@ -56,7 +59,16 @@ public class AdminService {
                 """);
         long completedRentals = scalarLong("SELECT COUNT(*) FROM rentals WHERE UPPER(COALESCE(status, '')) IN (" + COMPLETED_RENTAL_STATUSES + ")");
         long pendingDevices = scalarLong("SELECT COUNT(*) FROM products WHERE UPPER(COALESCE(status, '')) IN ('PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL')");
-        long openDisputes = scalarLong("SELECT COUNT(*) FROM rentals WHERE UPPER(COALESCE(status, '')) IN ('DISPUTED', 'IN_DISPUTE', 'DISPUTE_OPEN')");
+        long openDisputes = scalarLong("""
+                SELECT
+                    (SELECT COUNT(*) FROM marketplace_reports WHERE status IN ('OPEN', 'UNDER_REVIEW')) +
+                    (SELECT COUNT(*) FROM rental_disputes WHERE status IN ('OPEN', 'UNDER_REVIEW'))
+                """);
+        long pendingVerifications = scalarLong("""
+                SELECT COALESCE(COUNT(*) FILTER (WHERE student_card_status = 'PENDING'), 0) +
+                       COALESCE(COUNT(*) FILTER (WHERE identity_status = 'PENDING'), 0)
+                FROM account_verifications
+                """);
         BigDecimal revenueThisMonth = scalarMoney("""
                 SELECT COALESCE(SUM(amount), 0) FROM payments
                 WHERE UPPER(COALESCE(status, '')) IN (%s)
@@ -65,7 +77,7 @@ public class AdminService {
                 """.formatted(PAID_STATUSES));
 
         return new DashboardResponse(totalUsers, activeUsers, newUsersThisMonth, completedRentals,
-                pendingDevices, openDisputes, revenueThisMonth, getMonthlyRevenue(),
+                pendingDevices, openDisputes, pendingVerifications, revenueThisMonth, getMonthlyRevenue(),
                 getRevenueByCategory(), getRecentActivities());
     }
 
@@ -350,7 +362,8 @@ public class AdminService {
                        r.status, COALESCE(payment.status, 'UNPAID') AS payment_status, payment.method AS payment_method,
                        r.delivery_method, r.delivery_address, r.district, r.city, r.contact_name,
                        r.contact_phone, r.contact_email, COALESCE(r.total_amount, 0) AS total_amount,
-                       GREATEST(COALESCE(r.total_amount, 0) - COALESCE(r.deposit_amount, 0) - COALESCE(r.service_fee, 0), 0) AS rental_amount,
+                       COALESCE((SELECT SUM(ri.subtotal) FROM rental_items ri WHERE ri.rental_id = r.id),
+                                GREATEST(COALESCE(r.total_amount, 0) - COALESCE(r.deposit_amount, 0) - COALESCE(r.service_fee, 0) - COALESCE(r.delivery_fee, 0), 0)) AS rental_amount,
                        COALESCE(r.deposit_amount, 0) AS deposit_amount, COALESCE(r.service_fee, 0) AS service_fee,
                        r.created_at
                 FROM rentals r
@@ -423,6 +436,7 @@ public class AdminService {
                 """, rentalId);
         jdbcTemplate.update("UPDATE rental_items SET status = 'CANCELLED' WHERE rental_id = ?", rentalId);
         jdbcTemplate.update("UPDATE rentals SET status = 'CANCELLED' WHERE id = ?", rentalId);
+        walletService.refundCancelledRental(rentalId);
         jdbcTemplate.update("""
                 UPDATE payments SET status = 'REFUNDED'
                 WHERE rental_id = ? AND UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
@@ -506,6 +520,14 @@ public class AdminService {
                     SELECT 'Thiết bị mới: ' || COALESCE(name, 'Chưa đặt tên') AS description,
                            created_at AS occurred_at
                     FROM products WHERE created_at IS NOT NULL
+                    UNION ALL
+                    SELECT 'Báo cáo mới: ' || COALESCE(category, 'Cần xem xét') AS description,
+                           created_at AS occurred_at
+                    FROM marketplace_reports WHERE created_at IS NOT NULL
+                    UNION ALL
+                    SELECT 'Tranh chấp tiền cọc mới: ' || COALESCE(reason, 'Cần xem xét') AS description,
+                           created_at AS occurred_at
+                    FROM rental_disputes WHERE created_at IS NOT NULL
                 ) activity
                 ORDER BY occurred_at DESC
                 LIMIT 6

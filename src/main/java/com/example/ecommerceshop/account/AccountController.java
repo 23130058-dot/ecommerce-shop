@@ -3,6 +3,8 @@ package com.example.ecommerceshop.account;
 import com.example.ecommerceshop.account.AccountDtos.ChangePasswordRequest;
 import com.example.ecommerceshop.account.AccountDtos.ProfileResponse;
 import com.example.ecommerceshop.account.AccountDtos.UpdateProfileRequest;
+import com.example.ecommerceshop.account.NotificationPreferenceDtos.PreferencesRequest;
+import com.example.ecommerceshop.account.NotificationPreferenceDtos.PreferencesResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,9 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/account")
 public class AccountController {
     private final AccountService accountService;
+    private final NotificationPreferenceService notificationPreferenceService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, NotificationPreferenceService notificationPreferenceService) {
         this.accountService = accountService;
+        this.notificationPreferenceService = notificationPreferenceService;
     }
 
     @GetMapping("/profile")
@@ -48,6 +52,17 @@ public class AccountController {
     public ProfileResponse uploadAvatar(@AuthenticationPrincipal Jwt jwt,
                                        @RequestPart("file") MultipartFile file) {
         return accountService.updateAvatar(userId(jwt), file);
+    }
+
+    @GetMapping("/notification-preferences")
+    public PreferencesResponse notificationPreferences(@AuthenticationPrincipal Jwt jwt) {
+        return notificationPreferenceService.get(userId(jwt));
+    }
+
+    @PutMapping("/notification-preferences")
+    public PreferencesResponse updateNotificationPreferences(@AuthenticationPrincipal Jwt jwt,
+                                                             @Valid @RequestBody PreferencesRequest request) {
+        return notificationPreferenceService.update(userId(jwt), request);
     }
 
     private long userId(Jwt jwt) {

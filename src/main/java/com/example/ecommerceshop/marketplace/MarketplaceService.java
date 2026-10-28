@@ -1,6 +1,7 @@
 package com.example.ecommerceshop.marketplace;
 
 import com.example.ecommerceshop.marketplace.MarketplaceDtos.*;
+import com.example.ecommerceshop.wallet.WalletService;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,9 +16,11 @@ import java.util.Locale;
 @Service
 public class MarketplaceService {
     private final JdbcTemplate jdbc;
+    private final WalletService walletService;
 
-    public MarketplaceService(JdbcTemplate jdbc) {
+    public MarketplaceService(JdbcTemplate jdbc, WalletService walletService) {
         this.jdbc = jdbc;
+        this.walletService = walletService;
     }
 
     @Transactional(readOnly = true)
@@ -31,7 +34,8 @@ public class MarketplaceService {
         };
         String sql = """
                 SELECT s.owner_id, s.store_name, COALESCE(u.full_name,u.email,'Chủ thiết bị') owner_name,
-                       s.description, s.city, u.avatar_url,
+                       s.description, s.city, u.avatar_url,s.address,s.contact_phone,s.contact_email,
+                       s.business_hours,s.facebook_url,s.instagram_url,s.logo_url,s.cover_image_url,
                        COUNT(DISTINCT p.id)::bigint active_product_count,
                        COALESCE(ROUND(AVG(p.rating)::numeric,1),0) average_rating,
                        COALESCE(SUM(stats.rental_count),0)::bigint rental_count
@@ -50,12 +54,17 @@ public class MarketplaceService {
                        OR EXISTS (SELECT 1 FROM products matched
                                   WHERE matched.owner_id=s.owner_id AND matched.status='ACTIVE'
                                     AND LOWER(CONCAT_WS(' ',matched.name,matched.description)) LIKE '%'||?||'%'))
-                GROUP BY s.owner_id,s.store_name,u.full_name,u.email,s.description,s.city,u.avatar_url,s.created_at
+                GROUP BY s.owner_id,s.store_name,u.full_name,u.email,s.description,s.city,u.avatar_url,
+                         s.address,s.contact_phone,s.contact_email,s.business_hours,s.facebook_url,
+                         s.instagram_url,s.logo_url,s.cover_image_url,s.created_at
                 ORDER BY
                 """ + orderBy + " LIMIT 100";
         return jdbc.query(sql, (rs,n)->new StoreSummary(
                 rs.getLong("owner_id"), rs.getString("store_name"), rs.getString("owner_name"),
                 rs.getString("description"), rs.getString("city"), rs.getString("avatar_url"),
+                rs.getString("address"),rs.getString("contact_phone"),rs.getString("contact_email"),
+                rs.getString("business_hours"),rs.getString("facebook_url"),rs.getString("instagram_url"),
+                rs.getString("logo_url"),rs.getString("cover_image_url"),
                 rs.getLong("active_product_count"), rs.getBigDecimal("average_rating"),
                 rs.getLong("rental_count")), q,q,q);
     }
@@ -64,7 +73,8 @@ public class MarketplaceService {
     public StoreDetail store(long ownerId) {
         List<StoreSummary> summaries = jdbc.query("""
                 SELECT s.owner_id,s.store_name,COALESCE(u.full_name,u.email,'Chủ thiết bị') owner_name,
-                       s.description,s.city,u.avatar_url,
+                       s.description,s.city,u.avatar_url,s.address,s.contact_phone,s.contact_email,
+                       s.business_hours,s.facebook_url,s.instagram_url,s.logo_url,s.cover_image_url,
                        COUNT(DISTINCT p.id)::bigint active_product_count,
                        COALESCE(ROUND(AVG(p.rating)::numeric,1),0) average_rating,
                        COALESCE(SUM(stats.rental_count),0)::bigint rental_count
@@ -77,9 +87,14 @@ public class MarketplaceService {
                       AND UPPER(COALESCE(pay.status,'')) IN ('PAID','SUCCESS','COMPLETED')
                 ) stats ON TRUE
                 WHERE s.owner_id=?
-                GROUP BY s.owner_id,s.store_name,u.full_name,u.email,s.description,s.city,u.avatar_url,s.created_at
+                GROUP BY s.owner_id,s.store_name,u.full_name,u.email,s.description,s.city,u.avatar_url,
+                         s.address,s.contact_phone,s.contact_email,s.business_hours,s.facebook_url,
+                         s.instagram_url,s.logo_url,s.cover_image_url,s.created_at
                 """, (rs,n)->new StoreSummary(rs.getLong("owner_id"),rs.getString("store_name"),rs.getString("owner_name"),
                 rs.getString("description"),rs.getString("city"),rs.getString("avatar_url"),
+                rs.getString("address"),rs.getString("contact_phone"),rs.getString("contact_email"),
+                rs.getString("business_hours"),rs.getString("facebook_url"),rs.getString("instagram_url"),
+                rs.getString("logo_url"),rs.getString("cover_image_url"),
                 rs.getLong("active_product_count"),rs.getBigDecimal("average_rating"),rs.getLong("rental_count")), ownerId);
         if (summaries.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy gian hàng hoặc gian hàng chưa có thiết bị đang hiển thị.");
         StoreSummary store=summaries.get(0);
@@ -104,7 +119,9 @@ public class MarketplaceService {
                 rs.getString("category"),rs.getString("brand"),rs.getBigDecimal("rating"),rs.getBigDecimal("price"),
                 rs.getString("image_key"),rs.getInt("available_quantity"),rs.getLong("rental_count")),ownerId);
         return new StoreDetail(store.ownerId(),store.storeName(),store.ownerName(),store.description(),store.city(),
-                store.avatarUrl(),store.averageRating(),store.rentalCount(),products);
+                store.avatarUrl(),store.address(),store.contactPhone(),store.contactEmail(),store.businessHours(),
+                store.facebookUrl(),store.instagramUrl(),store.logoUrl(),store.coverImageUrl(),
+                store.averageRating(),store.rentalCount(),products);
     }
 
     @Transactional
@@ -279,6 +296,7 @@ public class MarketplaceService {
                   status=EXCLUDED.status,note=EXCLUDED.note,resolved_by=EXCLUDED.resolved_by,resolved_at=CURRENT_TIMESTAMP
                 """,row.rentalItemId(),row.renterId(),row.ownerId(),row.depositAmount(),refunded,deducted,
                 settlementStatus,request.resolutionNote().trim(),adminId);
+        walletService.settleDeposit(row.rentalItemId(), refunded, deducted);
         jdbc.update("UPDATE damage_reports SET status=? WHERE id=?",status.equals("APPROVED")?"REVIEWED":"REJECTED",row.damageReportId());
         String renterMessage="Kết quả khiếu nại tiền cọc: "+status+". Hoàn lại "+refunded.toPlainString()+"đ, khấu trừ "+deducted.toPlainString()+"đ.";
         jdbc.update("INSERT INTO user_notifications(user_id,type,title,message,target_url) VALUES(?,?,?,?,?)",

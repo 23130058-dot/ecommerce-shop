@@ -13,7 +13,9 @@ public final class MarketplaceDtos {
     private MarketplaceDtos() {}
 
     public record StoreSummary(Long ownerId, String storeName, String ownerName, String description,
-                               String city, String avatarUrl, long activeProductCount,
+                               String city, String avatarUrl, String address, String contactPhone,
+                               String contactEmail, String businessHours, String facebookUrl,
+                               String instagramUrl, String logoUrl, String coverImageUrl, long activeProductCount,
                                BigDecimal averageRating, long rentalCount) {}
 
     public record StoreProduct(Long id, String name, String type, String category, String brand,
@@ -21,12 +23,24 @@ public final class MarketplaceDtos {
                                Integer availableQuantity, long rentalCount) {}
 
     public record StoreDetail(Long ownerId, String storeName, String ownerName, String description,
-                              String city, String avatarUrl, BigDecimal averageRating,
+                              String city, String avatarUrl, String address, String contactPhone,
+                              String contactEmail, String businessHours, String facebookUrl,
+                              String instagramUrl, String logoUrl, String coverImageUrl, BigDecimal averageRating,
                               long rentalCount, List<StoreProduct> products) {}
 
     public record StoreProfileRequest(@NotBlank @Size(max = 160) String storeName,
                                       @Size(max = 2000) String description,
-                                      @Size(max = 120) String city) {}
+                                      @Size(max = 120) String city,
+                                      @Size(max = 300) String address,
+                                      @Size(max = 40) String contactPhone,
+                                      @Size(max = 180) String contactEmail,
+                                      @Size(max = 300) String businessHours,
+                                      @Size(max = 500) String facebookUrl,
+                                      @Size(max = 500) String instagramUrl,
+                                      @Size(max = 500) String logoUrl,
+                                      @Size(max = 500) String coverImageUrl) {}
+
+    public record StoreImageUploadResponse(String url) {}
 
     public record CreateMarketplaceReportRequest(
             @NotBlank String targetType,

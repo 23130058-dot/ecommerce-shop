@@ -34,6 +34,7 @@ export const getOwnerProducts = (options) => request('/products', options)
 export const getOwnerDashboard = (options) => request('/dashboard', options)
 export const createOwnerProduct = (payload) => request('/products', { method: 'POST', body: payload })
 export const updateOwnerProduct = (productId, payload) => request(`/products/${encodeURIComponent(productId)}`, { method: 'PUT', body: payload })
+export const deleteOwnerProduct = (productId) => request(`/products/${encodeURIComponent(productId)}`, { method: 'DELETE' })
 export const getOwnerRevenue = ({ from, to, signal } = {}) => {
   const query = new URLSearchParams({ from, to })
   return request(`/revenue?${query.toString()}`, { signal })
@@ -77,5 +78,24 @@ export async function saveOwnerStorefront(body) {
   })
   const result = await response.json().catch(() => null)
   if (!response.ok) throw new Error(result?.detail || result?.message || `Không lưu được gian hàng (${response.status}).`)
+  return result
+}
+export async function uploadOwnerStorefrontImage(file, kind) {
+  const auth = getStoredAuth()
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('kind', kind)
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/owner/storefront/images`, {
+      method: 'POST',
+      headers: auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {},
+      body: formData,
+    })
+  } catch (error) {
+    throw new Error('Không kết nối được backend để tải ảnh gian hàng.', { cause: error })
+  }
+  const result = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(result?.detail || result?.message || `Không tải được ảnh gian hàng (${response.status}).`)
   return result
 }

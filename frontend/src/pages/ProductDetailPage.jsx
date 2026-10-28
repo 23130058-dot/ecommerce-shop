@@ -230,6 +230,16 @@ export default function ProductDetailPage() {
     finally { setReportBusy(false) }
   }
 
+  const messageOwner = () => {
+    if (!ensureSignedIn() || ownProduct) return
+    window.dispatchEvent(new CustomEvent('lensrent-open-product-chat', { detail: {
+      productId: product.id,
+      productName: product.name,
+      ownerId: product.ownerId,
+      peerName: product.ownerName || 'Chủ thiết bị',
+    } }))
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[#f8fafc] font-sans text-[#111827]">
       <Header />
@@ -389,6 +399,7 @@ export default function ProductDetailPage() {
                   <h2 className="mt-3 text-lg font-bold text-gray-900">{product.ownerName || 'Chủ thiết bị LensRent'}</h2>
                   <p className="mt-1 text-sm text-gray-600">Chủ thiết bị trên LensRent</p>
                   {product.ownerId && <Link className="mt-3 inline-flex text-sm font-bold text-[#ff5500] hover:underline" to={`/stores/${product.ownerId}`}>{product.storeName || 'Xem gian hàng'} →</Link>}
+                  {!ownProduct && product.ownerId && <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600" onClick={messageOwner} type="button"><span aria-hidden="true">▤</span> Nhắn tin với Owner</button>}
                   {isSignedIn ? (
                     <>
                       <p className="mt-2 text-sm leading-6 text-gray-600">Bạn đã đăng nhập. Chọn thời gian thuê và thêm thiết bị vào giỏ để tiếp tục đặt thuê.</p>
