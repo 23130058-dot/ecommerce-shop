@@ -16,7 +16,7 @@ export default function FeaturedProducts({
         <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.6px] text-[#ff5500]">Sản phẩm tiêu biểu</p>
-            <h2 className="text-2xl font-extrabold leading-9 text-[#111827] sm:text-[30px]">Thiết bị đang được quan tâm</h2>
+            <h2 className="text-2xl font-extrabold leading-9 text-[#111827] sm:text-[30px]">{activeFilter === 'best-selling' ? 'Thiết bị được thuê nhiều nhất' : 'Thiết bị đang được quan tâm'}</h2>
           </div>
           <div className="flex items-center gap-1 rounded-lg text-sm" aria-label="Sắp xếp sản phẩm">
             {sortOptions.map((option) => (

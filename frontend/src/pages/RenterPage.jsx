@@ -5,13 +5,15 @@ import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import DataTable from '../components/shared/DataTable.jsx'
 import { getStoredAuth } from '../services/authApi.js'
-import { getCurrentRentalItems, getRenterDashboard } from '../services/shoppingApi.js'
+import { getCurrentRentalItems, getRenterDashboard, getRenterNotifications, markRenterNotificationsRead } from '../services/shoppingApi.js'
+import { showToast } from '../services/toast.js'
 
 const navigation = [
   { to: '/renter', label: 'Tổng quan', icon: '▦' },
   { to: '/renter/orders', label: 'Đơn thuê của tôi', icon: '▤' },
   { to: '/wishlist', label: 'Danh sách yêu thích', icon: '♡' },
   { to: '/compare', label: 'Quản lý & So sánh', icon: '⇄' },
+  { to: '/renter/notifications', label: 'Thông báo', icon: '♧' },
 ]
 
 const statusLabels = {
@@ -106,6 +108,23 @@ function EmptyOrders() {
   )
 }
 
+function NotificationsPanel() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const refresh = () => getRenterNotifications().then((rows) => setItems(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message)).finally(() => setLoading(false))
+  useEffect(() => { refresh() }, [])
+  const markAll = async () => {
+    setBusy(true)
+    try { await markRenterNotificationsRead(); await refresh(); showToast('Đã đánh dấu đã đọc.', 'success') }
+    catch (e) { showToast(e.message, 'error') }
+    finally { setBusy(false) }
+  }
+  return <section className="overflow-hidden rounded-xl border border-gray-200 bg-white"><div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 sm:p-5"><div><h2 className="font-bold">Thông báo tài khoản</h2><p className="mt-1 text-sm text-gray-500">Cập nhật về đơn thuê, tiền cọc và báo cáo của bạn.</p></div><button onClick={markAll} disabled={busy || !items.some((item) => !item.readAt)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 disabled:opacity-40">{busy ? 'Đang lưu…' : 'Đánh dấu đã đọc'}</button></div>
+    {error && <p role="alert" className="p-4 text-sm text-red-700">{error}</p>}{loading ? <p className="p-8 text-center text-sm text-gray-500">Đang tải thông báo…</p> : items.length ? <div className="divide-y divide-gray-100">{items.map((item) => <Link key={item.id} to={item.targetUrl?.startsWith('/') ? item.targetUrl : '/renter/orders'} className={`flex gap-3 p-4 transition hover:bg-gray-50 ${!item.readAt ? 'bg-orange-50/40' : ''}`}><span className={`mt-1 size-2 shrink-0 rounded-full ${item.readAt ? 'bg-gray-300' : 'bg-[#ff5500]'}`} /><span className="min-w-0 flex-1"><b className="text-sm">{item.title}</b><span className="mt-1 block text-sm leading-5 text-gray-600">{item.message}</span><span className="mt-2 block text-xs text-gray-400">{item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : 'Vừa xong'} · {item.type}</span></span><span aria-hidden="true" className="text-gray-400">›</span></Link>)}</div> : <p className="p-12 text-center text-sm text-gray-500">Bạn chưa có thông báo nào.</p>}</section>
+}
+
 export default function RenterPage() {
   const location = useLocation()
   const auth = getStoredAuth()
@@ -132,6 +151,7 @@ export default function RenterPage() {
   const rentals = dashboard?.rentalHistory || []
   const recent = dashboard?.recentRentals || []
   const isOrders = activeSection === 'orders'
+  const isNotifications = activeSection === 'notifications'
   const rentalColumns = [
     { key: 'rentalCode', header: 'Mã đơn', className: 'whitespace-nowrap', render: (rental) => <Link className="font-semibold text-gray-700 hover:text-[#ff5500]" to={`/renter/orders/${rental.rentalId}`}>#{rental.rentalCode}</Link> },
     { key: 'firstProductName', header: 'Thiết bị', className: 'min-w-[180px]', render: (rental) => rental.firstProductName || `${rental.itemCount} thiết bị` },
@@ -164,8 +184,8 @@ export default function RenterPage() {
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff5500]">LensRent · Workspace</p>
-                <h1 className="mt-1.5 text-2xl font-extrabold sm:text-3xl">{isOrders ? 'Đơn thuê của tôi' : `Chào mừng trở lại, ${(dashboard?.fullName || auth.user?.fullName || 'bạn').split(' ')[0]}!`}</h1>
-                <p className="mt-1.5 text-sm text-gray-500">{isOrders ? 'Theo dõi trạng thái, lịch thuê và chi phí các đơn của bạn.' : 'Quản lý thiết bị đang thuê và theo dõi các đơn gần đây.'}</p>
+                <h1 className="mt-1.5 text-2xl font-extrabold sm:text-3xl">{isOrders ? 'Đơn thuê của tôi' : isNotifications ? 'Thông báo' : `Chào mừng trở lại, ${(dashboard?.fullName || auth.user?.fullName || 'bạn').split(' ')[0]}!`}</h1>
+                <p className="mt-1.5 text-sm text-gray-500">{isOrders ? 'Theo dõi trạng thái, lịch thuê và chi phí các đơn của bạn.' : isNotifications ? 'Cập nhật về đơn thuê, báo cáo và tiền cọc.' : 'Quản lý thiết bị đang thuê và theo dõi các đơn gần đây.'}</p>
               </div>
               <Link className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600" to="/categories">+ Thuê thêm thiết bị</Link>
             </div>
@@ -173,14 +193,17 @@ export default function RenterPage() {
             {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
             {loading ? <div className="rounded-xl border border-gray-200 bg-white px-5 py-12 text-center text-sm text-gray-500">Đang tải tổng quan...</div> : (
               <>
-                {!isOrders && <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {isNotifications ? <NotificationsPanel /> : isOrders ? (
+                  rentals.length ? <div className="space-y-3">{rentals.map((rental) => <RentalRow key={rental.rentalId} rental={rental} />)}</div> : <EmptyOrders />
+                ) : <>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <Metric icon="▣" label="Thiết bị đang thuê" value={dashboard?.rentingDevices || 0} note="Đơn đã được xác nhận" />
                   <Metric icon="◷" label="Sắp tới hạn trả" value={dashboard?.pendingReturns || 0} note="Theo dõi để trả đúng lịch" tone="purple" />
                   <Metric icon="◇" label="Tổng tiền cọc" value={money(dashboard?.totalDeposit)} note="Cọc đang giữ ở các đơn mở" tone="blue" />
                   <Metric icon="✦" label="Điểm tín nhiệm" value={dashboard?.trustScore ?? 980} note="Hạng bạc · lịch sử thuê tốt" tone="green" />
-                </div>}
+                </div>
 
-                {!isOrders && <section className="mb-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+                <section className="mb-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div><h2 className="text-base font-bold">Thiết bị đang thuê</h2><p className="mt-1 text-sm text-gray-500">Các đơn đã được chủ thiết bị xác nhận sẽ hiển thị ở đây.</p></div>
                     <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-[#ed4b0a]">{currentRentalItems.length} thiết bị</span>
@@ -189,11 +212,8 @@ export default function RenterPage() {
                     <Link className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1.5" to={`/products/${item.productId}`}><img alt={item.name} className="max-h-full max-w-full object-contain" src={resolveProductImage(item.imageKey)} /></Link>
                     <div className="min-w-0 flex-1"><Link className="line-clamp-2 text-sm font-bold text-gray-800 hover:text-[#ff5500]" to={`/products/${item.productId}`}>{item.name}</Link><p className="mt-1 text-xs text-gray-500">Số lượng: {item.quantity} · {dateLabel(item.startDate)} – {dateLabel(item.endDate)}</p><Link className="mt-1 inline-block text-xs font-semibold text-[#ff5500] hover:underline" to={`/renter/orders/${item.rentalId}`}>Đơn #{item.rentalCode}</Link></div>
                   </article>)}</div> : <p className="rounded-lg bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">Chưa có thiết bị được xác nhận cho thuê. Đơn mới thanh toán sẽ xuất hiện sau khi chủ thiết bị xác nhận.</p>}
-                </section>}
+                </section>
 
-                {isOrders ? (
-                  rentals.length ? <div className="space-y-3">{rentals.map((rental) => <RentalRow key={rental.rentalId} rental={rental} />)}</div> : <EmptyOrders />
-                ) : (
                   <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.85fr)]">
                     <div className="space-y-4">
                       <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
@@ -233,7 +253,7 @@ export default function RenterPage() {
                       <Link className="block rounded-xl bg-[#ff5500] p-5 text-white transition hover:bg-orange-600" to="/categories"><p className="text-lg font-extrabold">Bảo hiểm thiết bị chuyên nghiệp</p><p className="mt-1 text-sm text-orange-50">Thêm an tâm cho chuyến thuê kế tiếp với chính sách bảo vệ thiết bị.</p><span className="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-sm font-bold text-[#ed4b0a]">Tìm hiểu thêm →</span></Link>
                     </div>
                   </div>
-                )}
+                </>}
               </>
             )}
           </section>

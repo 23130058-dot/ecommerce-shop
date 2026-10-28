@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.time.LocalDate;
+import com.example.ecommerceshop.marketplace.MarketplaceDtos.AvailabilityResponse;
 
 import java.util.List;
 
@@ -14,9 +16,11 @@ import java.util.List;
 @RequestMapping("/api/products")
 public class CatalogController {
     private final CatalogService catalogService;
+    private final ProductAvailabilityService availabilityService;
 
-    public CatalogController(CatalogService catalogService) {
+    public CatalogController(CatalogService catalogService, ProductAvailabilityService availabilityService) {
         this.catalogService = catalogService;
+        this.availabilityService = availabilityService;
     }
 
     @GetMapping
@@ -32,5 +36,11 @@ public class CatalogController {
     @GetMapping("/{productId}")
     public ProductDetailResponse product(@PathVariable long productId) {
         return catalogService.getProduct(productId);
+    }
+
+    @GetMapping("/{productId}/availability")
+    public AvailabilityResponse availability(@PathVariable long productId,
+            @RequestParam LocalDate from, @RequestParam LocalDate to) {
+        return availabilityService.availability(productId, from, to);
     }
 }

@@ -105,6 +105,12 @@ public class OwnerService {
         if (!imageUrl.isBlank()) {
             jdbc.update("INSERT INTO product_images (product_id, image_url, is_primary) VALUES (?, ?, TRUE)", productId, imageUrl);
         }
+        jdbc.update("""
+                INSERT INTO owner_stores(owner_id,store_name,description,city)
+                SELECT id,COALESCE(NULLIF(BTRIM(full_name),''),'LensRent')||' Studio',
+                       'Gian hàng thiết bị quay chụp trên LensRent.',city FROM users WHERE id=?
+                ON CONFLICT(owner_id) DO NOTHING
+                """,ownerId);
         return getProducts(ownerId).stream().filter(product -> product.id().equals(productId)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tải được thiết bị vừa tạo."));
     }
@@ -267,7 +273,7 @@ public class OwnerService {
     @Transactional(readOnly = true)
     public List<BookingResponse> getBookings(long ownerId) {
         return jdbc.query("""
-                SELECT r.id AS rental_id, r.rental_code, COALESCE(u.full_name, 'Khách thuê') AS renter_name,
+                SELECT r.id AS rental_id, r.rental_code, u.id AS renter_id, COALESCE(u.full_name, 'Khách thuê') AS renter_name,
                        COALESCE(u.phone, r.contact_phone, '') AS renter_phone,
                        STRING_AGG(p.name || ' × ' || ri.quantity, ', ' ORDER BY ri.id) AS product_names,
                        MIN(ri.start_date) AS start_date, MAX(ri.end_date) AS end_date,
@@ -290,7 +296,7 @@ public class OwnerService {
                     SELECT status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1
                 ) payment ON TRUE
                 WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
-                GROUP BY r.id, r.rental_code, u.full_name, u.phone, r.contact_phone,
+                GROUP BY r.id, r.rental_code, u.id, u.full_name, u.phone, r.contact_phone,
                          payment.status, r.created_at
                 ORDER BY r.created_at DESC, r.id DESC
                 """, (rs, rowNum) -> new BookingResponse(
@@ -300,7 +306,8 @@ public class OwnerService {
                 rs.getDate("end_date") == null ? null : rs.getDate("end_date").toLocalDate(),
                 rs.getBigDecimal("rental_amount"), rs.getBigDecimal("deposit_amount"),
                 rs.getString("status"), rs.getString("payment_status"),
-                rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime()
+                rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getLong("renter_id")
         ), ownerId);
     }
 

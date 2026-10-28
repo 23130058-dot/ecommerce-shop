@@ -44,7 +44,7 @@ const primaryLinks = [
   { label: 'Quản lý người dùng', icon: 'users', to: '/admin/users' },
   { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
   { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
-  { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes', disabled: true },
+  { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes' },
 ]
 
 const systemLinks = [

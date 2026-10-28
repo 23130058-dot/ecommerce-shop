@@ -89,6 +89,7 @@ public final class ShoppingDtos {
     ) {}
 
     public record RentalItemDetail(
+            Long rentalItemId,
             Long productId,
             String name,
             String imageKey,
@@ -96,7 +97,14 @@ public final class ShoppingDtos {
             LocalDate startDate,
             LocalDate endDate,
             BigDecimal dailyPrice,
-            BigDecimal subtotal
+            BigDecimal subtotal,
+            String damageDescription,
+            BigDecimal damageAmount,
+            String damageStatus,
+            String disputeStatus,
+            BigDecimal depositRefunded,
+            BigDecimal depositDeducted,
+            String depositStatus
     ) {}
 
     public record RentalDetail(
@@ -151,4 +159,7 @@ public final class ShoppingDtos {
                                             LocalDateTime createdAt, boolean mine) {}
 
     public record SendRentalChatMessageRequest(@NotBlank String body) {}
+
+    public record RenterNotificationResponse(Long id, String type, String title, String message,
+            String targetUrl, LocalDateTime createdAt, LocalDateTime readAt) {}
 }

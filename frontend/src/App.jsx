@@ -10,6 +10,8 @@ import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import AdminProductsPage from './pages/AdminProductsPage.jsx'
 import AdminOrdersPage from './pages/AdminOrdersPage.jsx'
+import AdminMarketplacePage from './pages/AdminMarketplacePage.jsx'
+import StoresPage from './pages/StoresPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import WishlistPage from './pages/WishlistPage.jsx'
 import ComparePage from './pages/ComparePage.jsx'
@@ -45,6 +47,8 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products/:productId" element={<ProductDetailPage />} />
+        <Route path="/stores" element={<StoresPage />} />
+        <Route path="/stores/:ownerId" element={<StoresPage />} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/compare" element={<ComparePage />} />
         <Route path="/cart" element={<CartPage />} />
@@ -58,6 +62,7 @@ function App() {
         <Route path="/admin/products" element={<AdminOnly><AdminProductsPage /></AdminOnly>} />
         <Route path="/admin/devices" element={<Navigate to="/admin/products" replace />} />
         <Route path="/admin/orders" element={<AdminOnly><AdminOrdersPage /></AdminOnly>} />
+        <Route path="/admin/disputes" element={<AdminOnly><AdminMarketplacePage /></AdminOnly>} />
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />

@@ -4,6 +4,7 @@ import ConfirmDialog from '../layout/ConfirmDialog.jsx'
 import { showToast } from '../../services/toast.js'
 import DataTable from '../shared/DataTable.jsx'
 import { cancelOwnerBooking, confirmOwnerBooking, getOwnerBookings, handoverOwnerBooking } from '../../services/ownerApi.js'
+import { createMarketplaceReport } from '../../services/productApi.js'
 
 const formatMoney = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0)) + ' đ'
 const formatDate = (value) => value ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`)) : '—'
@@ -16,6 +17,9 @@ export default function BookingList() {
     const [error, setError] = useState('')
     const [busyId, setBusyId] = useState(null)
     const [confirmation, setConfirmation] = useState(null)
+    const [reportBooking, setReportBooking] = useState(null)
+    const [reportText, setReportText] = useState('')
+    const [reportBusy, setReportBusy] = useState(false)
 
     useEffect(() => {
         const controller = new AbortController()
@@ -78,6 +82,16 @@ export default function BookingList() {
             setBusyId(null)
         }
     }
+    const reportRenter = async (event) => {
+        event.preventDefault()
+        if (!reportBooking?.renterId) return
+        setReportBusy(true)
+        try {
+            await createMarketplaceReport({ targetType: 'CUSTOMER', targetUserId: reportBooking.renterId, category: 'Báo cáo khách thuê', description: reportText.trim() })
+            setReportBooking(null); setReportText(''); showToast('Đã gửi báo cáo khách thuê để Admin xem xét.', 'success')
+        } catch (reportError) { showToast(reportError.message, 'error') }
+        finally { setReportBusy(false) }
+    }
     const statusClass = (status) => status === 'PENDING' ? 'bg-orange-50 text-orange-600'
         : ['ACTIVE', 'IN_PROGRESS', 'RENTING'].includes(status) ? 'bg-blue-50 text-blue-600'
             : status === 'CANCELLED' || status === 'CANCELED' ? 'bg-gray-100 text-gray-600'
@@ -95,6 +109,7 @@ export default function BookingList() {
             {booking.status === 'PENDING' && <button disabled={busyId === booking.rentalId} onClick={() => confirm(booking.rentalId)} type="button" className="whitespace-nowrap rounded-lg bg-[#F45116] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#df450f] disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận đơn'}</button>}
             {booking.status === 'CONFIRMED' && <button disabled={busyId === booking.rentalId} onClick={() => setConfirmation({ rentalId: booking.rentalId, title: 'Xác nhận bàn giao?', message: 'Xác nhận bạn đã bàn giao thiết bị cho người thuê? Đơn sẽ chuyển sang trạng thái Đang thuê.', confirmLabel: 'Đã bàn giao', tone: 'primary', action: () => handover(booking.rentalId) })} type="button" className="whitespace-nowrap rounded-lg bg-blue-600 px-3 py-2 text-[10px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{busyId === booking.rentalId ? 'Đang lưu…' : 'Xác nhận bàn giao'}</button>}
             {['PENDING','CONFIRMED'].includes(booking.status) && booking.startDate > new Date().toISOString().slice(0,10) && <button disabled={busyId === booking.rentalId} onClick={() => setConfirmation({ rentalId: booking.rentalId, title: 'Hủy sản phẩm khỏi đơn?', message: 'Hủy sản phẩm của bạn trong đơn thuê này? Nếu đơn có sản phẩm Owner khác, các sản phẩm đó vẫn được giữ.', confirmLabel: 'Hủy sản phẩm', tone: 'danger', action: () => cancel(booking.rentalId) })} type="button" className="whitespace-nowrap rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60">Hủy sản phẩm</button>}
+            {booking.renterId && <button onClick={() => { setReportBooking(booking); setReportText('') }} type="button" className="whitespace-nowrap rounded-lg border border-gray-200 px-3 py-2 text-[10px] font-semibold text-gray-600 hover:border-rose-200 hover:text-rose-600">Báo cáo khách</button>}
             {!['PENDING','CONFIRMED'].includes(booking.status) && <span className="text-xs text-gray-400">—</span>}
         </div> },
     ]
@@ -123,5 +138,6 @@ export default function BookingList() {
             <div className="mt-5"><DataTable columns={columns} rows={filteredBookings} rowKey={(booking) => booking.rentalId} loading={loading} error={error} searchable searchPlaceholder="Tìm mã đơn, khách thuê, thiết bị…" emptyMessage={bookings.length ? 'Không có đơn trong trạng thái này.' : 'Các đơn khách thuê thiết bị của bạn sẽ hiển thị tại đây.'} pageSize={10} /></div>
         </div>
         <ConfirmDialog open={Boolean(confirmation)} title={confirmation?.title} message={confirmation?.message} confirmLabel={confirmation?.confirmLabel} tone={confirmation?.tone} busy={busyId === confirmation?.rentalId} onCancel={() => setConfirmation(null)} onConfirm={() => confirmation?.action?.()} />
+        {reportBooking && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"><form onSubmit={reportRenter} className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><h2 className="text-lg font-bold">Báo cáo khách thuê</h2><p className="mt-1 text-sm text-gray-500">{reportBooking.renterName} · đơn #{reportBooking.rentalCode}</p><label className="mt-4 block text-sm font-semibold">Mô tả sự việc<textarea required maxLength={2000} rows={4} value={reportText} onChange={(event) => setReportText(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-200 p-3 font-normal" placeholder="Nêu rõ tình huống, thời gian và thông tin liên quan…" /></label><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setReportBooking(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm">Đóng</button><button disabled={reportBusy} className="rounded-lg bg-[#F45116] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{reportBusy ? 'Đang gửi…' : 'Gửi báo cáo'}</button></div></form></div>}
     </div>
 }

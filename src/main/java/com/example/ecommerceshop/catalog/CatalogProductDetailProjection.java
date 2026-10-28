@@ -16,5 +16,7 @@ public interface CatalogProductDetailProjection {
     BigDecimal getDepositAmount();
     String getImageKey();
     String getOwnerName();
+    Long getOwnerId();
+    String getStoreName();
     Integer getStock();
 }

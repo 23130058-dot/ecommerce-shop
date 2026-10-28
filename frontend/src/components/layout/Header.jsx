@@ -149,6 +149,7 @@ export default function Header({
             <Link className="transition hover:text-[#ff5500]" to="/categories">Danh mục</Link>
             <Link className="transition hover:text-[#ff5500]" to="/compare">So sánh</Link>
             <Link className="transition hover:text-[#ff5500]" to="/wishlist">Yêu thích</Link>
+            <Link className="transition hover:text-[#ff5500]" to="/stores">Gian hàng</Link>
           </nav>
         </div>
 

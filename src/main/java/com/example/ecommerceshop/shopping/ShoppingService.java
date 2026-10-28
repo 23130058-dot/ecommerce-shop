@@ -3,6 +3,7 @@ package com.example.ecommerceshop.shopping;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CartResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CheckoutResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.ItemRequest;
+import com.example.ecommerceshop.catalog.ProductAvailabilityService;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CartUpdateRequest;
 import com.example.ecommerceshop.shopping.ShoppingDtos.ShoppingItemResponse;
 import org.springframework.http.HttpStatus;
@@ -48,9 +49,11 @@ public class ShoppingService {
             ) image ON TRUE
             """;
     private final JdbcTemplate jdbc;
+    private final ProductAvailabilityService availabilityService;
 
-    public ShoppingService(JdbcTemplate jdbc) {
+    public ShoppingService(JdbcTemplate jdbc, ProductAvailabilityService availabilityService) {
         this.jdbc = jdbc;
+        this.availabilityService = availabilityService;
     }
 
     @Transactional(readOnly = true)
@@ -130,26 +133,30 @@ public class ShoppingService {
         ProductRow product = lockActiveProductAvailability(request.productId(), cartId);
         rejectOwnerRenting(userId, product);
         int quantity = request.quantity() == null ? 1 : request.quantity();
-        validateQuantity(quantity, product.availableQuantity());
         validateDatePair(request.startDate(), request.endDate());
+        if (request.startDate() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Vui lòng chọn ngày thuê trước khi thêm thiết bị vào giỏ.");
 
         List<Long> existingIds = jdbc.query("SELECT id FROM cart_items WHERE cart_id = ? AND product_id = ?",
                 (rs, row) -> rs.getLong(1), cartId, request.productId());
+        int oldQuantity = existingIds.isEmpty() ? 0 : jdbc.queryForObject(
+                "SELECT quantity FROM cart_items WHERE id = ?", Integer.class, existingIds.get(0));
+        if (!existingIds.isEmpty()) {
+            CartItemRow existing = findCartItem(cartId, existingIds.get(0));
+            if (!request.startDate().equals(existing.startDate()) || !request.endDate().equals(existing.endDate())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"Thiết bị này đã có trong giỏ với ngày thuê khác. Hãy sửa ngày trong giỏ hàng.");
+            }
+        }
+        availabilityService.requireAvailable(request.productId(),request.startDate(),request.endDate(),oldQuantity+quantity,cartId);
         if (existingIds.isEmpty()) {
             jdbc.update("""
                     INSERT INTO cart_items (cart_id, product_id, quantity, start_date, end_date, reserved_until)
                     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '10 minutes')
-                    """,
-                    cartId, request.productId(), quantity, request.startDate(), request.endDate());
+                    """,cartId, request.productId(), quantity, request.startDate(), request.endDate());
         } else {
-            int oldQuantity = jdbc.queryForObject("SELECT quantity FROM cart_items WHERE id = ?", Integer.class, existingIds.get(0));
-            validateQuantity(oldQuantity + quantity, product.availableQuantity());
             jdbc.update("""
-                    UPDATE cart_items SET quantity = ?, start_date = ?, end_date = ?,
-                        reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
+                    UPDATE cart_items SET quantity = ?, reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
                     WHERE id = ? AND cart_id = ?
-                    """,
-                    oldQuantity + quantity, request.startDate(), request.endDate(), existingIds.get(0), cartId);
+                    """,oldQuantity + quantity, existingIds.get(0), cartId);
         }
         return calculateCart(queryCartItems(cartId));
     }
@@ -164,8 +171,8 @@ public class ShoppingService {
         int quantity = request.quantity() == null ? item.quantity() : request.quantity();
         LocalDate startDate = request.startDate() == null ? item.startDate() : request.startDate();
         LocalDate endDate = request.endDate() == null ? item.endDate() : request.endDate();
-        validateQuantity(quantity, product.availableQuantity());
         validateDatePair(startDate, endDate);
+        availabilityService.requireAvailable(item.productId(),startDate,endDate,quantity,cartId);
         jdbc.update("""
                 UPDATE cart_items SET quantity = ?, start_date = ?, end_date = ?,
                     reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
@@ -231,10 +238,7 @@ public class ShoppingService {
                 .sorted(Comparator.comparing(ShoppingItemResponse::productId)).toList()) {
             ProductRow product = lockActiveProductAvailability(item.productId(), cartId);
             rejectOwnerRenting(userId, product);
-            if (item.quantity() > product.availableQuantity()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Số lượng thiết bị còn lại đã thay đổi. Vui lòng cập nhật giỏ hàng.");
-            }
+            availabilityService.requireAvailable(item.productId(),item.startDate(),item.endDate(),item.quantity(),cartId);
             int reserved = jdbc.update("""
                     UPDATE products SET stock = COALESCE(stock, 0) - ?
                     WHERE id = ? AND status = 'ACTIVE' AND COALESCE(stock, 0) >= ?
@@ -303,6 +307,20 @@ public class ShoppingService {
     @Transactional(readOnly = true)
     public List<RentalSummary> getRentals(long userId) {
         return queryRentalSummaries(userId, 100);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RenterNotificationResponse> getRenterNotifications(long userId) {
+        return jdbc.query("SELECT id,type,title,message,target_url,created_at,read_at FROM user_notifications WHERE user_id=? ORDER BY id DESC LIMIT 100",
+                (rs,n)->new RenterNotificationResponse(rs.getLong("id"),rs.getString("type"),rs.getString("title"),
+                        rs.getString("message"),rs.getString("target_url"),
+                        rs.getTimestamp("created_at")==null?null:rs.getTimestamp("created_at").toLocalDateTime(),
+                        rs.getTimestamp("read_at")==null?null:rs.getTimestamp("read_at").toLocalDateTime()),userId);
+    }
+
+    @Transactional
+    public void markRenterNotificationsRead(long userId) {
+        jdbc.update("UPDATE user_notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND read_at IS NULL",userId);
     }
 
     @Transactional(readOnly = true)
@@ -511,18 +529,27 @@ public class ShoppingService {
 
     private List<RentalItemDetail> queryRentalItems(long rentalId) {
         return jdbc.query("""
-                SELECT ri.product_id, p.name, COALESCE(image.image_url, '') AS image_key,
-                       ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal
+                SELECT ri.id rental_item_id,ri.product_id, p.name, COALESCE(image.image_url, '') AS image_key,
+                       ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal,
+                       damage.description damage_description,damage.estimated_amount damage_amount,damage.status damage_status,
+                       dispute.status dispute_status,settlement.refunded_amount deposit_refunded,
+                       settlement.deducted_amount deposit_deducted,settlement.status deposit_status
                 FROM rental_items ri JOIN products p ON p.id = ri.product_id
                 LEFT JOIN LATERAL (
                     SELECT image_url FROM product_images WHERE product_id = p.id
                     ORDER BY is_primary DESC NULLS LAST, id LIMIT 1
                 ) image ON TRUE
+                LEFT JOIN damage_reports damage ON damage.rental_item_id=ri.id
+                LEFT JOIN LATERAL (SELECT status FROM rental_disputes WHERE rental_item_id=ri.id ORDER BY id DESC LIMIT 1) dispute ON TRUE
+                LEFT JOIN deposit_settlements settlement ON settlement.rental_item_id=ri.id
                 WHERE ri.rental_id = ? ORDER BY ri.id
                 """, (rs, rowNum) -> new RentalItemDetail(
-                rs.getLong("product_id"), rs.getString("name"), rs.getString("image_key"), rs.getInt("quantity"),
+                rs.getLong("rental_item_id"),rs.getLong("product_id"), rs.getString("name"), rs.getString("image_key"), rs.getInt("quantity"),
                 rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
-                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal"))
+                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal")),
+                rs.getString("damage_description"),zero(rs.getBigDecimal("damage_amount")),rs.getString("damage_status"),
+                rs.getString("dispute_status"),zero(rs.getBigDecimal("deposit_refunded")),
+                zero(rs.getBigDecimal("deposit_deducted")),rs.getString("deposit_status")
         ), rentalId);
     }
 

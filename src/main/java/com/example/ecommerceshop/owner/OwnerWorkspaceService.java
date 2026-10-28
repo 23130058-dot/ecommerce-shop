@@ -55,7 +55,7 @@ public class OwnerWorkspaceService {
         String fullName = jdbc.query("SELECT COALESCE(full_name, email, 'Chủ thiết bị') FROM users WHERE id = ?",
                 rs -> rs.next() ? rs.getString(1) : "Chủ thiết bị", ownerId);
         List<BookingResponse> recentBookings = jdbc.query("""
-                SELECT r.id AS rental_id, r.rental_code, COALESCE(u.full_name, u.email, 'Khách thuê') AS renter_name,
+                SELECT r.id AS rental_id, r.rental_code, u.id AS renter_id, COALESCE(u.full_name, u.email, 'Khách thuê') AS renter_name,
                        COALESCE(u.phone, r.contact_phone, '') AS renter_phone,
                        STRING_AGG(p.name || ' × ' || ri.quantity, ', ' ORDER BY ri.id) AS product_names,
                        MIN(ri.start_date) AS start_date, MAX(ri.end_date) AS end_date,
@@ -74,13 +74,13 @@ public class OwnerWorkspaceService {
                 LEFT JOIN LATERAL (SELECT status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1) payment ON TRUE
                 WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) = 'PENDING'
                   AND UPPER(COALESCE(payment.status, '')) IN ('PAID','SUCCESS','COMPLETED')
-                GROUP BY r.id, r.rental_code, u.full_name, u.email, u.phone, r.contact_phone, payment.status, r.created_at
+                GROUP BY r.id, r.rental_code, u.id, u.full_name, u.email, u.phone, r.contact_phone, payment.status, r.created_at
                 ORDER BY r.created_at DESC, r.id DESC LIMIT 5
                 """, (rs, n) -> new BookingResponse(rs.getLong("rental_id"), rs.getString("rental_code"),
                 rs.getString("renter_name"), rs.getString("renter_phone"), rs.getString("product_names"),
                 rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
                 rs.getBigDecimal("rental_amount"), rs.getBigDecimal("deposit_amount"), rs.getString("status"),
-                rs.getString("payment_status"), local(rs.getTimestamp("created_at"))), ownerId);
+                rs.getString("payment_status"), local(rs.getTimestamp("created_at")),rs.getLong("renter_id")), ownerId);
 
         List<OwnerDashboardProduct> recentProducts = jdbc.query("""
                 SELECT p.id, p.name, p.daily_price, COALESCE(img.image_url, '') AS image_key,
@@ -181,12 +181,38 @@ public class OwnerWorkspaceService {
                   ('RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN','DAMAGE_REPORTED') FOR UPDATE
                 """, (rs,n)->rs.getLong(1), rentalItemId, ownerId);
         if (ids.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Thiết bị chưa có yêu cầu trả hoặc không thuộc tài khoản của bạn.");
-        jdbc.update("UPDATE damage_reports SET status='REVIEWED' WHERE rental_item_id=? AND status='OPEN'",rentalItemId);
+        List<ReturnSettlementRow> settlementRows=jdbc.query("""
+                SELECT r.renter_id,p.owner_id,p.deposit_amount*ri.quantity deposit_amount,d.id damage_id
+                FROM rental_items ri JOIN rentals r ON r.id=ri.rental_id JOIN products p ON p.id=ri.product_id
+                LEFT JOIN damage_reports d ON d.rental_item_id=ri.id AND d.status IN ('OPEN','UNDER_REVIEW')
+                WHERE ri.id=?
+                """,(rs,n)->new ReturnSettlementRow(rs.getLong("renter_id"),rs.getLong("owner_id"),
+                rs.getBigDecimal("deposit_amount")==null?BigDecimal.ZERO:rs.getBigDecimal("deposit_amount"),
+                (Long)rs.getObject("damage_id")),rentalItemId);
+        ReturnSettlementRow settlement=settlementRows.get(0);
+        if(settlement.damageId()==null) {
+            jdbc.update("""
+                    INSERT INTO deposit_settlements(rental_item_id,renter_id,owner_id,deposit_amount,refunded_amount,deducted_amount,status,note,resolved_at)
+                    VALUES(?,?,?, ?,?,0,'REFUNDED','Thiết bị đã được hoàn trả và kiểm tra; hoàn cọc mô phỏng.',CURRENT_TIMESTAMP)
+                    ON CONFLICT(rental_item_id) DO UPDATE SET deposit_amount=EXCLUDED.deposit_amount,
+                      refunded_amount=EXCLUDED.refunded_amount,deducted_amount=0,status='REFUNDED',note=EXCLUDED.note,resolved_at=CURRENT_TIMESTAMP
+                    """,rentalItemId,settlement.renterId(),settlement.ownerId(),settlement.depositAmount(),settlement.depositAmount());
+        } else {
+            jdbc.update("""
+                    INSERT INTO deposit_settlements(rental_item_id,renter_id,owner_id,deposit_amount,status,note)
+                    VALUES(?,?,?,?,'PENDING_REVIEW','Tiền cọc đang được giữ trong lúc kiểm tra báo cáo hư hỏng.')
+                    ON CONFLICT(rental_item_id) DO UPDATE SET status='PENDING_REVIEW',note=EXCLUDED.note,resolved_at=NULL,resolved_by=NULL
+                    """,rentalItemId,settlement.renterId(),settlement.ownerId(),settlement.depositAmount());
+        }
         jdbc.update("UPDATE rental_items SET status='COMPLETED' WHERE id=?",rentalItemId);
         jdbc.update("UPDATE products p SET stock=COALESCE(stock,0)+ri.quantity FROM rental_items ri WHERE ri.id=? AND p.id=ri.product_id",rentalItemId);
         notifyRentalRenter(rentalItemId,"RETURN","Đã xác nhận hoàn trả","Owner đã xác nhận thiết bị được trả.","/renter/orders");
+        notify(settlement.renterId(),"DEPOSIT",settlement.damageId()==null?"Đã hoàn tiền cọc":"Tiền cọc đang chờ kiểm tra",
+                settlement.damageId()==null?"Tiền cọc đã được ghi nhận hoàn trả (mô phỏng).":"Owner đã gửi báo cáo hư hỏng; tiền cọc được giữ trong lúc Admin xem xét.","/renter/orders");
         syncRentalStatus(rentalItemId);
     }
+
+    private record ReturnSettlementRow(long renterId,long ownerId,BigDecimal depositAmount,Long damageId) {}
 
     @Transactional
     public void reportDamage(long ownerId, long rentalItemId, DamageReportRequest request) {

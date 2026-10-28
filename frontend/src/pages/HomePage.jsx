@@ -11,7 +11,7 @@ import { getCatalogProducts } from '../services/productApi.js'
 
 export default function HomePage() {
   const [searchValue, setSearchValue] = useState('')
-  const [activeFilter, setActiveFilter] = useState('popular')
+  const [activeFilter, setActiveFilter] = useState('best-selling')
   const [products, setProducts] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')

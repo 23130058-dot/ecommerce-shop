@@ -94,3 +94,8 @@ export function getAdminOrder(orderId) {
 export function cancelAdminOrder(orderId) {
   return requestAdminApi(`/api/admin/orders/${orderId}/cancel`, { method: 'PATCH' })
 }
+
+export const getMarketplaceReports = (status = 'all') => requestAdminApi(`/api/admin/marketplace/reports${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
+export const resolveMarketplaceReport = (id, body) => requestAdminApi(`/api/admin/marketplace/reports/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+export const getRentalDisputes = (status = 'all') => requestAdminApi(`/api/admin/marketplace/disputes${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
+export const resolveRentalDispute = (id, body) => requestAdminApi(`/api/admin/marketplace/disputes/${id}`, { method: 'PATCH', body: JSON.stringify(body) })

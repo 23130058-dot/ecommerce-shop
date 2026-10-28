@@ -59,7 +59,8 @@ public final class OwnerDtos {
             BigDecimal depositAmount,
             String status,
             String paymentStatus,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            Long renterId
     ) {}
 
     public record DailyRevenue(LocalDate date, BigDecimal amount) {}
