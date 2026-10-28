@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './authApi.js'
+import { API_BASE_URL, getStoredAuth } from './authApi.js'
 
 export async function getCatalogProducts({ search = '', category = '', sort = 'popular', limit = 24, signal } = {}) {
   const params = new URLSearchParams({ search, sort, limit: String(limit) })
@@ -35,5 +35,41 @@ export async function getCatalogProduct(productId, { signal } = {}) {
       ? 'Không tìm thấy thiết bị này.'
       : 'Không tải được chi tiết thiết bị (' + response.status + ').'))
   }
+  return body
+}
+
+export async function getProductAvailability(productId, { from, to, signal } = {}) {
+  const params = new URLSearchParams({ from, to })
+  const response = await fetch(`${API_BASE_URL}/api/products/${encodeURIComponent(productId)}/availability?${params}`, { signal })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail || body?.message || `Không kiểm tra được lịch thuê (${response.status}).`)
+  return body
+}
+
+export async function getStores({ search = '', sort = 'popular', signal } = {}) {
+  const params = new URLSearchParams({ search, sort })
+  const response = await fetch(`${API_BASE_URL}/api/stores?${params}`, { signal })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail || body?.message || `Không tải được gian hàng (${response.status}).`)
+  return Array.isArray(body) ? body : []
+}
+
+export async function getStore(ownerId, { signal } = {}) {
+  const response = await fetch(`${API_BASE_URL}/api/stores/${encodeURIComponent(ownerId)}`, { signal })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail || body?.message || `Không tải được gian hàng (${response.status}).`)
+  return body
+}
+
+export async function createMarketplaceReport(payload) {
+  const auth = getStoredAuth()
+  if (!auth?.accessToken) throw new Error('Đăng nhập để gửi báo cáo.')
+  const response = await fetch(`${API_BASE_URL}/api/stores/reports`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${auth.accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail || body?.message || `Không gửi được báo cáo (${response.status}).`)
   return body
 }

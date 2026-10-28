@@ -42,6 +42,13 @@ public interface CatalogProductRepository extends Repository<User, Long> {
             ORDER BY CASE WHEN :sort = 'price' THEN p.daily_price END ASC NULLS LAST,
                      CASE WHEN :sort = 'newest' THEN p.created_at END DESC NULLS LAST,
                      CASE WHEN :sort = 'popular' THEN p.featured_order END ASC NULLS LAST,
+                     CASE WHEN :sort = 'best-selling' THEN COALESCE((
+                         SELECT SUM(ri.quantity) FROM rental_items ri
+                         WHERE ri.product_id=p.id
+                           AND UPPER(COALESCE(ri.status,'')) NOT IN ('CANCELLED','CANCELED')
+                           AND EXISTS (SELECT 1 FROM payments pay WHERE pay.rental_id=ri.rental_id
+                                       AND UPPER(COALESCE(pay.status,'')) IN ('PAID','SUCCESS','COMPLETED'))
+                     ),0) END DESC,
                      p.created_at DESC,
                      p.id DESC
             LIMIT :limit
@@ -66,6 +73,8 @@ public interface CatalogProductRepository extends Repository<User, Long> {
                    p.deposit_amount AS "depositAmount",
                    COALESCE(image.image_url, '') AS "imageKey",
                    COALESCE(NULLIF(owner.full_name, ''), 'Chủ thiết bị LensRent') AS "ownerName",
+                   p.owner_id AS "ownerId",
+                   COALESCE(store.store_name,COALESCE(NULLIF(owner.full_name,''),'LensRent')||' Studio') AS "storeName",
                    GREATEST(COALESCE(p.stock, 0) - COALESCE((
                        SELECT SUM(ci.quantity)
                        FROM cart_items ci
@@ -75,6 +84,7 @@ public interface CatalogProductRepository extends Repository<User, Long> {
             JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
             LEFT JOIN users owner ON owner.id = p.owner_id
+            LEFT JOIN owner_stores store ON store.owner_id=p.owner_id
             LEFT JOIN LATERAL (
                 SELECT pi.image_url
                 FROM product_images pi

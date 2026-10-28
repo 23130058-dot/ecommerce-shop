@@ -58,6 +58,7 @@ export const products = [
 ]
 
 export const sortOptions = [
+  { key: 'best-selling', label: 'Bán chạy' },
   { key: 'popular', label: 'Phổ biến nhất' },
   { key: 'newest', label: 'Mới nhất' },
   { key: 'price', label: 'Giá tốt' },

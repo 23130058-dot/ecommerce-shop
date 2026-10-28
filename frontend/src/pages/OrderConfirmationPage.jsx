@@ -4,7 +4,7 @@ import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import ConfirmDialog from '../components/layout/ConfirmDialog.jsx'
 import Header from '../components/layout/Header.jsx'
-import { getRental, cancelRental, requestRentalReturn, getRentalChats, getRentalChatMessages, sendRentalChatMessage } from '../services/shoppingApi.js'
+import { getRental, cancelRental, requestRentalReturn, getRentalChats, getRentalChatMessages, sendRentalChatMessage, submitRentalDispute } from '../services/shoppingApi.js'
 import { getCatalogProducts } from '../services/productApi.js'
 import { showToast } from '../services/toast.js'
 
@@ -35,6 +35,8 @@ export default function OrderConfirmationPage() {
   const [chatMessages, setChatMessages] = useState([])
   const [chatBody, setChatBody] = useState('')
   const [chatBusy, setChatBusy] = useState(false)
+  const [disputeForms, setDisputeForms] = useState({})
+  const [disputeBusy, setDisputeBusy] = useState(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -103,6 +105,17 @@ export default function OrderConfirmationPage() {
       showToast('Tin nhắn đã được gửi.', 'success')
     } catch (sendError) { showToast(sendError.message, 'error') } finally { setChatBusy(false) }
   }
+  const sendDispute = async (event, item) => {
+    event.preventDefault()
+    const form = disputeForms[item.rentalItemId] || {}
+    setDisputeBusy(item.rentalItemId)
+    try {
+      await submitRentalDispute(rental.rentalId, { rentalItemId: item.rentalItemId, reason: (form.reason || '').trim(), requestedAmount: Number(form.requestedAmount || 0) })
+      setRental(await getRental(rentalId))
+      showToast('Đã gửi khiếu nại tiền cọc đến Admin.', 'success')
+    } catch (error) { showToast(error.message, 'error') }
+    finally { setDisputeBusy(null) }
+  }
   const timeline = [
     { title: 'Đặt đơn thuê thành công', detail: 'Yêu cầu thuê đã được lưu vào tài khoản LensRent.', done: Boolean(rental) },
     { title: 'Xác nhận thanh toán', detail: rental?.paymentStatus === 'PAID' ? 'Thanh toán mô phỏng đã được ghi nhận thành công.' : 'Đang cập nhật trạng thái thanh toán.', done: rental?.paymentStatus === 'PAID', current: rental?.paymentStatus !== 'PAID' },
@@ -159,7 +172,12 @@ export default function OrderConfirmationPage() {
             <div className="mt-4 divide-y divide-gray-100">
               {rental.items.map((item) => <div className="flex gap-3 py-3 first:pt-0" key={item.productId}>
                 <Link className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1.5" to={`/products/${item.productId}`}><img alt={item.name} className="max-h-full max-w-full object-contain" src={resolveProductImage(item.imageKey)} /></Link>
-                <div className="min-w-0 flex-1"><Link className="line-clamp-2 text-sm font-bold text-gray-800 hover:text-[#ff5500]" to={`/products/${item.productId}`}>{item.name}</Link><p className="mt-1 text-xs text-gray-500">{item.quantity} thiết bị · {item.startDate} – {item.endDate}</p></div>
+                <div className="min-w-0 flex-1"><Link className="line-clamp-2 text-sm font-bold text-gray-800 hover:text-[#ff5500]" to={`/products/${item.productId}`}>{item.name}</Link><p className="mt-1 text-xs text-gray-500">{item.quantity} thiết bị · {item.startDate} – {item.endDate}</p>
+                  {item.damageDescription && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs"><p className="font-bold text-amber-900">Báo cáo tình trạng thiết bị</p><p className="mt-1 leading-5 text-amber-800">{item.damageDescription} · Mức thiệt hại đề xuất {money(item.damageAmount)}</p>{item.depositStatus && <p className="mt-1 font-semibold text-amber-900">Tiền cọc: {item.depositStatus === 'PENDING_REVIEW' ? 'Đang chờ xử lý' : item.depositStatus} · hoàn {money(item.depositRefunded)} · khấu trừ {money(item.depositDeducted)}</p>}
+                    {['OPEN','UNDER_REVIEW'].includes(String(item.damageStatus || '').toUpperCase()) && !item.disputeStatus && <form onSubmit={(event) => sendDispute(event,item)} className="mt-3 space-y-2"><textarea required maxLength={2000} value={disputeForms[item.rentalItemId]?.reason || ''} onChange={(event) => setDisputeForms((current) => ({ ...current, [item.rentalItemId]: { ...current[item.rentalItemId], reason: event.target.value } }))} placeholder="Ý kiến của bạn về báo cáo…" rows={2} className="w-full rounded-lg border border-amber-200 bg-white p-2" /><div className="flex flex-wrap gap-2"><input type="number" min="0" step="1000" value={disputeForms[item.rentalItemId]?.requestedAmount ?? item.damageAmount ?? 0} onChange={(event) => setDisputeForms((current) => ({ ...current, [item.rentalItemId]: { ...current[item.rentalItemId], requestedAmount: event.target.value } }))} aria-label="Số tiền đề nghị xem xét" className="w-36 rounded-lg border border-amber-200 bg-white px-2 py-1.5" /><button disabled={disputeBusy === item.rentalItemId} className="rounded-lg bg-amber-700 px-3 py-1.5 font-bold text-white disabled:opacity-50">{disputeBusy === item.rentalItemId ? 'Đang gửi…' : 'Gửi khiếu nại'}</button></div></form>}
+                    {item.disputeStatus && <p className="mt-2 font-semibold text-amber-900">Trạng thái khiếu nại: {item.disputeStatus}</p>}
+                  </div>}
+                </div>
                 <b className="shrink-0 text-sm text-gray-800">{money(item.subtotal)}</b>
               </div>)}
             </div>
@@ -170,8 +188,10 @@ export default function OrderConfirmationPage() {
               <p className="text-xs leading-5 text-gray-500">{rental.deliveryMethod === 'STORE' ? 'Nhận tại cửa hàng LensRent' : [rental.deliveryAddress, rental.district, rental.city].filter(Boolean).join(', ')}</p>
               <div className="flex justify-between gap-3 border-t border-gray-100 pt-3 text-gray-500"><span>Hình thức</span><b className="text-right text-gray-800">{paymentLabels[rental.paymentMethod] || rental.paymentMethod || '—'}</b></div>
               <div className="flex justify-between gap-3 text-gray-500"><span>Trạng thái thanh toán</span><b className={rental.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-orange-600'}>{rental.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chờ xử lý'}</b></div>
-              <div className="flex justify-between gap-3 text-gray-500"><span>Tạm tính tiền thuê</span><b className="text-gray-800">{money(rental.rentalAmount)}</b></div>
+              <div className="flex justify-between gap-3 text-gray-500"><span>{Number(rental.studentDiscountAmount) > 0 ? 'Tạm tính tiền thuê' : 'Tiền thuê'}</span><b className="text-gray-800">{money(Number(rental.rentalAmount) + Number(rental.studentDiscountAmount || 0))}</b></div>
+              {Number(rental.studentDiscountAmount) > 0 && <><div className="flex justify-between gap-3 text-emerald-700"><span>Ưu đãi học sinh / sinh viên (15%)</span><b>−{money(rental.studentDiscountAmount)}</b></div><div className="flex justify-between gap-3 text-gray-500"><span>Tiền thuê sau ưu đãi</span><b className="text-gray-800">{money(rental.rentalAmount)}</b></div></>}
               <div className="flex justify-between gap-3 text-gray-500"><span>Phí dịch vụ</span><b className="text-gray-800">{money(rental.serviceFee)}</b></div>
+              {Number(rental.deliveryFee) > 0 && <div className="flex justify-between gap-3 text-gray-500"><span>Phí vận chuyển</span><b className="text-gray-800">{money(rental.deliveryFee)}</b></div>}
               <div className="flex justify-between gap-3 text-gray-500"><span>Tiền cọc thiết bị</span><b className="text-gray-800">{money(rental.depositAmount)}</b></div>
             </div>
             <div className="mt-4 flex items-end justify-between border-t border-gray-100 pt-4"><b className="text-sm">Tổng cộng</b><b className="text-xl font-extrabold text-[#ff5500]">{money(rental.totalAmount)}</b></div>

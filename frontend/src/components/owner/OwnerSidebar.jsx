@@ -133,6 +133,11 @@ const menuGroups = [
                 icon: 'camera',
             },
             {
+                label: 'Gian hàng của tôi',
+                path: '/owner/storefront',
+                icon: 'camera',
+            },
+            {
                 label: 'Lịch trình & Giá',
                 path: '/owner/schedule',
                 icon: 'calendar',

@@ -1,6 +1,7 @@
 package com.example.ecommerceshop.owner;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -59,7 +60,8 @@ public final class OwnerDtos {
             BigDecimal depositAmount,
             String status,
             String paymentStatus,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            Long renterId
     ) {}
 
     public record DailyRevenue(LocalDate date, BigDecimal amount) {}
@@ -116,7 +118,8 @@ public final class OwnerDtos {
     public record TransactionResponse(Long id, String title, String subtitle, String type,
                                       BigDecimal amount, String status, LocalDateTime createdAt) {}
 
-    public record WithdrawalRequest(@NotNull @DecimalMin("1.0") BigDecimal amount) {}
+    public record WithdrawalRequest(
+            @NotNull @DecimalMin("10000.0") @DecimalMax("50000000.0") BigDecimal amount) {}
 
     public record ReviewCandidateResponse(Long rentalId, String rentalCode, Long renterId,
                                           String renterName, String productNames, LocalDate startDate,

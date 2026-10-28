@@ -28,6 +28,7 @@ import ReviewTenant from '../components/owner/ReviewTenant'
 
 import ChatHistory from '../components/owner/ChatHistory'
 import Notifications from '../components/owner/Notifications'
+import StorefrontSettings from '../components/owner/StorefrontSettings'
 
 function OwnerPage() {
     return (
@@ -64,6 +65,8 @@ function OwnerPage() {
                     path="/equipment"
                     element={<EquipmentList />}
                 />
+
+                <Route path="/storefront" element={<StorefrontSettings />} />
 
                 <Route
                     path="/equipment/add"

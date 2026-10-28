@@ -4,6 +4,7 @@ import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import { getStoredAuth } from '../services/authApi.js'
+import { getAccountVerification } from '../services/accountApi.js'
 import { clearCart, getCart, removeCartItem, updateCartItem } from '../services/shoppingApi.js'
 import { showToast } from '../services/toast.js'
 
@@ -29,7 +30,10 @@ function CheckoutRow({ label, value, strong = false, accent = false }) {
 export default function CartPage() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [cart, setCart] = useState({ items: [], rentalTotal: 0, depositTotal: 0, serviceFee: 0, total: 0 })
+  const [cart, setCart] = useState({ items: [], rentalSubtotal: 0, studentDiscountAmount: 0, studentDiscountEligible: false, rentalTotal: 0, depositTotal: 0, serviceFee: 0, total: 0 })
+  const [verification, setVerification] = useState(null)
+  const [verificationLoading, setVerificationLoading] = useState(true)
+  const [verificationError, setVerificationError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
@@ -42,6 +46,15 @@ export default function CartPage() {
       .catch((loadError) => { if (loadError.name !== 'AbortError') setError(loadError.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    getAccountVerification()
+      .then((result) => { if (active) setVerification(result) })
+      .catch((requestError) => { if (active) setVerificationError(requestError.message) })
+      .finally(() => { if (active) setVerificationLoading(false) })
+    return () => { active = false }
   }, [])
 
   if (!getStoredAuth()) return <Navigate to="/login" replace state={{ from: location }} />
@@ -79,6 +92,7 @@ export default function CartPage() {
   }
 
   const itemCount = cart.items.reduce((total, item) => total + Number(item.quantity || 0), 0)
+  const identityVerified = verification?.identityStatus === 'APPROVED'
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f8fa] text-gray-900">
@@ -89,13 +103,16 @@ export default function CartPage() {
           <h1 className="text-2xl font-bold sm:text-[28px]">Giỏ hàng của bạn</h1>
           <span className="rounded bg-gray-200 px-2 py-1 text-xs font-bold text-gray-700">{itemCount} THIẾT BỊ</span>
         </div>
+        {!loading && cart.items.length > 0 && !identityVerified && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
+          <div><p className="font-bold">Cần xác minh CCCD trước khi đặt thuê</p><p className="mt-1 text-xs leading-5">Gửi CCCD trong Cài đặt tài khoản và chờ Admin duyệt. Bạn vẫn có thể xem và chỉnh giỏ hàng trong lúc chờ.</p>{verificationError && <p className="mt-1 text-xs text-rose-700">{verificationError}</p>}</div>
+          <Link className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-amber-700 px-3.5 text-xs font-bold text-white hover:bg-amber-800" to="/account/settings/verification">{verificationLoading ? 'Kiểm tra trạng thái…' : 'Xác minh CCCD'}</Link>
+        </div>}
         {loading ? (
           <div className="mt-5 rounded-xl border border-gray-200 bg-white py-16 text-center text-sm text-gray-500">Đang tải giỏ hàng…</div>
         ) : error ? (
           <div className="mt-5 rounded-xl border border-red-200 bg-white px-5 py-12 text-center text-sm text-red-700">{error}</div>
         ) : cart.items.length ? (
           <>
-            <div className="mt-4 rounded-lg border border-emerald-200 bg-[#ecfdf5] px-4 py-2.5 text-sm font-medium text-emerald-700"><span className="mr-2">✓</span>LensRent cam kết thiết bị chính hãng & đã được kiểm tra kỹ thuật</div>
             <div className="mt-4 grid items-start gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.8fr)]">
               <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
                 <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
@@ -157,7 +174,11 @@ export default function CartPage() {
                   <button className="rounded-md border border-red-200 px-3 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-40" disabled={!coupon.trim()} onClick={() => showToast('Hiện chưa có mã giảm giá áp dụng cho giỏ hàng này.', 'info')} type="button">Áp dụng</button>
                 </div>
                 <div className="mt-4 space-y-1">
-                  <CheckoutRow label={`Tổng tiền thuê (${cart.items.length} mục)`} value={money(cart.rentalTotal)} />
+                  {Number(cart.studentDiscountAmount) > 0 ? <>
+                    <CheckoutRow label="Tạm tính tiền thuê" value={money(cart.rentalSubtotal)} />
+                    <CheckoutRow accent label="Ưu đãi học sinh / sinh viên (15%)" value={`−${money(cart.studentDiscountAmount)}`} />
+                    <CheckoutRow label="Tiền thuê sau ưu đãi" value={money(cart.rentalTotal)} />
+                  </> : <CheckoutRow label={`Tổng tiền thuê (${cart.items.length} mục)`} value={money(cart.rentalTotal)} />}
                   <CheckoutRow label="Tổng tiền cọc máy" value={money(cart.depositTotal)} />
                   <CheckoutRow label="Phí bảo hiểm thiết bị (5%)" value={money(cart.serviceFee)} />
                   <CheckoutRow accent label="Phí vận chuyển" value="Miễn phí" />
@@ -165,7 +186,7 @@ export default function CartPage() {
                   <p className="text-right text-[11px] text-gray-400">Giá đã bao gồm VAT</p>
                 </div>
                 <div className="mt-4 rounded-lg border border-orange-100 bg-[#fff6ee] p-3 text-xs leading-5 text-orange-900"><b className="uppercase text-[#ed4b0a]">Lưu ý thanh toán</b><p className="mt-1">Tiền cọc sẽ được hoàn trả sau khi thiết bị được bàn giao lại và kiểm tra tình trạng.</p></div>
-                <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-gray-300" onClick={() => navigate('/checkout')} type="button">Tiến hành đặt thuê <span aria-hidden="true">→</span></button>
+                {identityVerified ? <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-600" onClick={() => navigate('/checkout')} type="button">Tiến hành đặt thuê <span aria-hidden="true">→</span></button> : <Link className="mt-4 flex min-h-11 w-full items-center justify-center rounded-lg bg-amber-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-800" to="/account/settings/verification">{verificationLoading ? 'Đang kiểm tra CCCD…' : 'Xác minh CCCD để đặt thuê'}</Link>}
                 <p className="mt-2 text-center text-[11px] leading-4 text-gray-400">Bằng cách nhấn nút, bạn đồng ý với Quy định thuê máy của LensRent.</p>
                 <div className="mt-4 border-t border-gray-100 pt-4 text-center">
                   <p className="text-[11px] font-semibold uppercase text-gray-400">Cần hỗ trợ kỹ thuật?</p>

@@ -94,3 +94,34 @@ export function getAdminOrder(orderId) {
 export function cancelAdminOrder(orderId) {
   return requestAdminApi(`/api/admin/orders/${orderId}/cancel`, { method: 'PATCH' })
 }
+
+export const getMarketplaceReports = (status = 'all') => requestAdminApi(`/api/admin/marketplace/reports${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
+export const resolveMarketplaceReport = (id, body) => requestAdminApi(`/api/admin/marketplace/reports/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+export const getRentalDisputes = (status = 'all') => requestAdminApi(`/api/admin/marketplace/disputes${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
+export const resolveRentalDispute = (id, body) => requestAdminApi(`/api/admin/marketplace/disputes/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+
+export const getAdminVerifications = (status = 'all') => requestAdminApi(`/api/admin/verifications${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
+export const reviewAdminVerification = (userId, type, body) => requestAdminApi(`/api/admin/verifications/${userId}/${encodeURIComponent(type)}`, {
+  method: 'PATCH',
+  body: JSON.stringify(body),
+})
+
+export async function getAdminVerificationDocument(userId, type) {
+  const auth = getStoredAuth()
+  if (!auth?.accessToken) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại bằng tài khoản ADMIN.')
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/admin/verifications/${userId}/documents/${encodeURIComponent(type)}`, {
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    })
+  } catch {
+    throw new Error('Không kết nối được backend. Hãy kiểm tra Spring Boot đang chạy ở cổng 8080.')
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    if (response.status === 401) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+    if (response.status === 403) throw new Error('Chỉ tài khoản ADMIN mới được xem giấy tờ xác minh.')
+    throw new Error(body?.detail || body?.message || body?.error || `Không tải được giấy tờ (${response.status}).`)
+  }
+  return { blob: await response.blob(), contentType: response.headers.get('Content-Type') || '' }
+}

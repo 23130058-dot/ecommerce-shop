@@ -32,6 +32,37 @@ export const changeAccountPassword = ({ currentPassword, newPassword }) => reque
   body: { currentPassword, newPassword },
 })
 
+export const getNotificationPreferences = () => request('/notification-preferences')
+export const updateNotificationPreferences = (preferences) => request('/notification-preferences', {
+  method: 'PUT',
+  body: preferences,
+})
+
+export const getAccountWallet = () => request('/wallet')
+export const topUpAccountWallet = ({ amount, simulatedResult }) => request('/wallet/top-ups', {
+  method: 'POST',
+  body: { amount, simulatedResult },
+})
+export const withdrawAccountWallet = ({ amount, simulatedResult }) => request('/wallet/withdrawals', {
+  method: 'POST',
+  body: { amount, simulatedResult },
+})
+
+export const getAccountVerification = () => request('/verification')
+export const requestPhoneVerificationCode = (phone) => request('/verification/phone-code', {
+  method: 'POST',
+  body: { phone },
+})
+export const confirmPhoneVerificationCode = ({ phone, code }) => request('/verification/phone-confirm', {
+  method: 'POST',
+  body: { phone, code },
+})
+export function uploadAccountVerificationDocument(type, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request(`/verification/documents/${encodeURIComponent(type)}`, { method: 'POST', body: formData, isMultipart: true })
+}
+
 export function uploadAccountAvatar(file) {
   const formData = new FormData()
   formData.append('file', file)

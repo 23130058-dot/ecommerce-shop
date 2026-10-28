@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
-import { getCatalogProduct, getCatalogProducts } from '../services/productApi.js'
+import { createMarketplaceReport, getCatalogProduct, getCatalogProducts, getProductAvailability } from '../services/productApi.js'
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, addToCompare, addToWishlist } from '../services/shoppingApi.js'
 import { showToast } from '../services/toast.js'
@@ -104,6 +104,12 @@ export default function ProductDetailPage() {
   const [isSignedIn, setIsSignedIn] = useState(() => Boolean(getStoredAuth()))
   const [startDate, setStartDate] = useState(() => addDays(localDateString(new Date()), 1))
   const [endDate, setEndDate] = useState(() => addDays(localDateString(new Date()), 3))
+  const [availability, setAvailability] = useState(null)
+  const [availabilityError, setAvailabilityError] = useState('')
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportText, setReportText] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
 
   useEffect(() => {
     const syncAuth = () => setIsSignedIn(Boolean(getStoredAuth()))
@@ -142,6 +148,16 @@ export default function ProductDetailPage() {
     return () => controller.abort()
   }, [product?.category, product?.id])
 
+  useEffect(() => {
+    if (!product?.id || !startDate || !endDate || endDate <= startDate) return undefined
+    const controller = new AbortController()
+    setAvailabilityLoading(true); setAvailabilityError('')
+    getProductAvailability(product.id, { from: startDate, to: endDate, signal: controller.signal })
+      .then(setAvailability).catch((error) => { if (error.name !== 'AbortError') { setAvailability(null); setAvailabilityError(error.message) } })
+      .finally(() => { if (!controller.signal.aborted) setAvailabilityLoading(false) })
+    return () => controller.abort()
+  }, [product?.id, startDate, endDate])
+
   const categoryPath = product?.category && categoryRoutes[product.category]
     ? '/categories/' + categoryRoutes[product.category]
     : '/categories'
@@ -154,6 +170,8 @@ export default function ProductDetailPage() {
   const rentalAmount = Number(product?.price || 0) * dayCount
   const depositAmount = Number(product?.depositAmount || 0)
   const totalAmount = rentalAmount + depositAmount
+  const unavailableDays = availability?.days?.filter((day) => !day.available) || []
+  const ownProduct = Boolean(product?.ownerId && String(product.ownerId) === String(getStoredAuth()?.user?.id))
   const syncProductRating = useCallback((rating) => {
     setProduct((current) => current ? { ...current, rating } : current)
   }, [])
@@ -187,6 +205,8 @@ export default function ProductDetailPage() {
   }
 
   const rentFromCart = async () => {
+    if (ownProduct) { showToast('Bạn không thể thuê thiết bị do chính mình đăng.', 'error'); return }
+    if (unavailableDays.length) { showToast(`Thiết bị đã kín lịch ngày ${unavailableDays[0].date}.`, 'error'); return }
     if (!ensureSignedIn()) return
     setShoppingBusy('cart')
     try {
@@ -197,6 +217,27 @@ export default function ProductDetailPage() {
       showToast(error.message, 'error')
       setShoppingBusy('')
     }
+  }
+
+  const reportProduct = async (event) => {
+    event.preventDefault()
+    if (!ensureSignedIn()) return
+    setReportBusy(true)
+    try {
+      await createMarketplaceReport({ targetType: 'PRODUCT', targetUserId: product.ownerId, productId: product.id, category: 'Sản phẩm vi phạm hoặc không chính xác', description: reportText.trim() })
+      setReportOpen(false); setReportText(''); showToast('Đã gửi báo cáo để Admin xem xét.', 'success')
+    } catch (error) { showToast(error.message, 'error') }
+    finally { setReportBusy(false) }
+  }
+
+  const messageOwner = () => {
+    if (!ensureSignedIn() || ownProduct) return
+    window.dispatchEvent(new CustomEvent('lensrent-open-product-chat', { detail: {
+      productId: product.id,
+      productName: product.name,
+      ownerId: product.ownerId,
+      peerName: product.ownerName || 'Chủ thiết bị',
+    } }))
   }
 
   return (
@@ -328,14 +369,17 @@ export default function ProductDetailPage() {
                       <DataRow label="Tổng tạm tính" value={formatCurrency(totalAmount)} strong />
                     </dl>
                     <p className="mt-2 text-xs leading-5 text-gray-500">Chưa bao gồm phí giao nhận (nếu có). Chủ thiết bị xác nhận chi phí cuối cùng.</p>
+                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs" aria-live="polite">
+                      {availabilityLoading ? <span className="text-gray-500">Đang kiểm tra lịch thuê…</span> : availabilityError ? <span className="text-rose-700">{availabilityError}</span> : unavailableDays.length ? <span className="font-semibold text-rose-700">Ngày không khả dụng: {unavailableDays.map((day) => day.date).join(', ')}. Hãy chọn khoảng ngày khác.</span> : availability ? <span className="font-medium text-emerald-700">Lịch còn trống trong {availability.days.length} ngày bạn chọn.</span> : <span className="text-gray-500">Chọn ngày để kiểm tra lịch trống.</span>}
+                    </div>
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('wishlist')} type="button">♡ Thêm vào Wishlist</button>
                     <button className="min-h-10 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a] disabled:opacity-50" disabled={Boolean(shoppingBusy)} onClick={() => saveToList('compare')} type="button">⇄ So sánh</button>
                   </div>
-                  {product.availableQuantity > 0 ? (
-                    <button className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-base font-bold text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500] disabled:opacity-60" disabled={shoppingBusy === 'cart'} onClick={rentFromCart} type="button">
+                  {ownProduct ? <div className="mt-4 rounded-lg bg-orange-50 p-3 text-center text-sm font-semibold text-orange-800">Đây là sản phẩm của bạn. Hãy chuyển sang workspace Owner để quản lý thiết bị.</div> : product.availableQuantity > 0 ? (
+                    <button className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-3 text-base font-bold text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500] disabled:opacity-60" disabled={shoppingBusy === 'cart' || availabilityLoading || Boolean(unavailableDays.length) || Boolean(availabilityError)} onClick={rentFromCart} type="button">
                       <span aria-hidden="true">↗</span> {shoppingBusy === 'cart' ? 'ĐANG THÊM VÀO GIỎ…' : 'THUÊ NGAY'}
                     </button>
                   ) : (
@@ -354,6 +398,8 @@ export default function ProductDetailPage() {
                   <p className="text-sm font-bold uppercase tracking-wide text-[#ed4b0a]">Thông tin chủ sở hữu</p>
                   <h2 className="mt-3 text-lg font-bold text-gray-900">{product.ownerName || 'Chủ thiết bị LensRent'}</h2>
                   <p className="mt-1 text-sm text-gray-600">Chủ thiết bị trên LensRent</p>
+                  {product.ownerId && <Link className="mt-3 inline-flex text-sm font-bold text-[#ff5500] hover:underline" to={`/stores/${product.ownerId}`}>{product.storeName || 'Xem gian hàng'} →</Link>}
+                  {!ownProduct && product.ownerId && <button className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600" onClick={messageOwner} type="button"><span aria-hidden="true">▤</span> Nhắn tin với Owner</button>}
                   {isSignedIn ? (
                     <>
                       <p className="mt-2 text-sm leading-6 text-gray-600">Bạn đã đăng nhập. Chọn thời gian thuê và thêm thiết bị vào giỏ để tiếp tục đặt thuê.</p>
@@ -362,6 +408,8 @@ export default function ProductDetailPage() {
                   ) : (
                     <Link className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:text-[#ed4b0a]" state={{ from: { pathname: location.pathname } }} to="/login">Đăng nhập để đặt thuê</Link>
                   )}
+                  <button className="mt-3 block text-xs font-semibold text-gray-500 underline decoration-gray-300 underline-offset-2 hover:text-red-600" onClick={() => setReportOpen((open) => !open)} type="button">Báo cáo sản phẩm</button>
+                  {reportOpen && <form onSubmit={reportProduct} className="mt-3 space-y-2 rounded-lg border border-gray-200 bg-white p-3"><textarea required maxLength={2000} value={reportText} onChange={(event) => setReportText(event.target.value)} rows={3} placeholder="Mô tả lý do báo cáo…" className="w-full rounded-lg border border-gray-200 p-2 text-sm" /><div className="flex justify-end gap-2"><button className="rounded-lg border border-gray-200 px-3 py-2 text-xs" type="button" onClick={() => setReportOpen(false)}>Đóng</button><button disabled={reportBusy} className="rounded-lg bg-[#ff5500] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{reportBusy ? 'Đang gửi…' : 'Gửi báo cáo'}</button></div></form>}
                 </section>
 
                 <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { categories } from '../../data/products'
 import { createOwnerProduct } from '../../services/ownerApi.js'
+import { getAccountVerification } from '../../services/accountApi.js'
 
 function readImage(file) {
     return new Promise((resolve, reject) => {
@@ -14,6 +15,9 @@ function readImage(file) {
 
 export default function EquipmentAdd() {
     const navigate = useNavigate()
+    const [identityStatus, setIdentityStatus] = useState('')
+    const [identityLoading, setIdentityLoading] = useState(true)
+    const [identityError, setIdentityError] = useState('')
 
     const [form, setForm] = useState({
         name: '',
@@ -31,6 +35,15 @@ export default function EquipmentAdd() {
     const [imageData, setImageData] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
+
+    useEffect(() => {
+        let active = true
+        getAccountVerification()
+            .then((result) => { if (active) setIdentityStatus(result.identityStatus || 'NOT_SUBMITTED') })
+            .catch((requestError) => { if (active) setIdentityError(requestError.message) })
+            .finally(() => { if (active) setIdentityLoading(false) })
+        return () => { active = false }
+    }, [])
 
     const handleChange = (e) => {
         setForm({
@@ -64,6 +77,10 @@ export default function EquipmentAdd() {
 
     const handleSubmit = async (e) => {
         e.preventDefault()
+        if (identityStatus !== 'APPROVED') {
+            setError('Bạn cần gửi CCCD và chờ Admin duyệt trước khi đăng thiết bị.')
+            return
+        }
         setError('')
         setBusy(true)
         try {
@@ -117,6 +134,11 @@ export default function EquipmentAdd() {
                 </p>
 
             </div>
+
+            {identityStatus !== 'APPROVED' && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+                <div><p className="text-sm font-bold text-amber-900">{identityLoading ? 'Đang kiểm tra xác minh CCCD…' : 'Cần xác minh CCCD trước khi đăng thiết bị'}</p><p className="mt-1 text-xs leading-5 text-amber-800">{identityError || 'Tải giấy tờ trong Cài đặt tài khoản và chờ Admin duyệt. Bạn vẫn có thể chuẩn bị thông tin thiết bị.'}</p></div>
+                <Link className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-amber-700 px-3.5 text-xs font-bold text-white hover:bg-amber-800" to="/account/settings/verification">Mở xác minh cá nhân</Link>
+            </div>}
 
             <form onSubmit={handleSubmit}>
 
@@ -352,10 +374,10 @@ export default function EquipmentAdd() {
 
                     <button
                         type="submit"
-                        disabled={busy}
+                        disabled={busy || identityLoading || identityStatus !== 'APPROVED'}
                         className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e] disabled:cursor-wait disabled:opacity-60"
                     >
-                        {busy ? 'Đang gửi…' : 'Gửi xét duyệt'}
+                        {busy ? 'Đang gửi…' : identityStatus === 'APPROVED' ? 'Gửi xét duyệt' : 'Xác minh CCCD trước'}
                     </button>
 
                 </div>

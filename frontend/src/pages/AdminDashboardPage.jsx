@@ -11,7 +11,8 @@ const adminLinks = [
   { label: 'Quản lý người dùng', icon: 'users', to: '/admin/users' },
   { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
   { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
-  { label: 'Khiếu nại & Tranh chấp', icon: 'message', disabled: true },
+  { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes' },
+  { label: 'Xác minh tài khoản', icon: 'shield', to: '/admin/verifications' },
 ]
 
 const systemLinks = [
@@ -50,9 +51,10 @@ function mapActivity(activity) {
   const description = activity.description || ''
   const isUser = description.startsWith('Người dùng')
   const isDevice = description.startsWith('Thiết bị')
+  const isComplaint = description.startsWith('Báo cáo') || description.startsWith('Tranh chấp')
   return {
-    icon: isUser ? 'users' : isDevice ? 'camera' : 'calendar',
-    tone: isUser ? 'blue' : isDevice ? 'green' : 'purple',
+    icon: isUser ? 'users' : isDevice ? 'camera' : isComplaint ? 'alert' : 'calendar',
+    tone: isUser ? 'blue' : isDevice ? 'green' : isComplaint ? 'amber' : 'purple',
     text: description,
     time: formatRelativeTime(activity.occurredAt),
   }
@@ -95,14 +97,15 @@ function StatCard({ title, value, note, icon, color = 'orange' }) {
     blue: 'bg-blue-50 text-blue-600',
     violet: 'bg-violet-50 text-violet-600',
     red: 'bg-red-50 text-red-500',
+    emerald: 'bg-emerald-50 text-emerald-600',
   }
 
   return (
-    <article className="flex min-h-[116px] items-start justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)] sm:p-5">
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold tracking-[0.08em] text-gray-500 sm:text-[11px]">{title}</p>
-        <p className="mt-2 truncate text-[23px] font-bold tracking-tight text-[#1f2937] sm:text-[26px]">{value}</p>
-        <p className="mt-1.5 text-[10px] text-gray-500 sm:text-[11px]">{note}</p>
+    <article className="flex min-h-[132px] items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-[0_2px_8px_rgba(16,24,40,0.035)] transition hover:border-orange-100 hover:shadow-[0_5px_16px_rgba(16,24,40,0.06)] sm:p-5">
+      <div className="min-w-0 flex-1">
+        <p className="min-h-8 text-[10px] font-bold leading-4 tracking-[0.08em] text-gray-500 sm:text-[11px]">{title}</p>
+        <p className="mt-2 min-w-0 text-[clamp(1.05rem,1.65vw,1.5rem)] font-bold leading-tight tracking-tight text-[#1f2937] [overflow-wrap:anywhere] tabular-nums">{value}</p>
+        <p className="mt-1.5 line-clamp-2 text-[10px] leading-4 text-gray-500 sm:text-[11px]">{note}</p>
       </div>
       <span className={`ml-2 flex size-9 shrink-0 items-center justify-center rounded-lg ${colorClasses[color]}`}>
         <AdminIcon name={icon} className="size-[18px]" />
@@ -259,6 +262,7 @@ export default function AdminDashboardPage() {
   const [dateRange, setDateRange] = useState(defaultDateRange)
   const [draftRange, setDraftRange] = useState(defaultDateRange)
   const [dashboard, setDashboard] = useState(null)
+  const [dashboardRevision, setDashboardRevision] = useState(0)
   const [trend, setTrend] = useState(null)
   const [dashboardError, setDashboardError] = useState('')
   const [dashboardLoading, setDashboardLoading] = useState(true)
@@ -281,7 +285,7 @@ export default function AdminDashboardPage() {
         if (current) setDashboardLoading(false)
       })
     return () => { current = false }
-  }, [])
+  }, [dashboardRevision])
 
   useEffect(() => {
     let current = true
@@ -360,25 +364,23 @@ export default function AdminDashboardPage() {
             {systemLinks.map((item) => <SidebarLink key={item.label} item={item} />)}
           </nav>
           <div className="mt-6 rounded-lg border border-gray-100 p-3">
-            <p className="text-[9px] font-bold tracking-[0.08em] text-gray-400">HỆ THỐNG TRẠNG THÁI</p>
-            <div className="mt-3 flex items-center justify-between text-[10px]">
-              <span className="text-gray-500">Uptime (30 ngày)</span>
-              <strong className="text-emerald-600">99.98%</strong>
-            </div>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full w-[99%] rounded-full bg-emerald-500" /></div>
+            <p className="text-[9px] font-bold tracking-[0.08em] text-gray-400">BẢO VỆ DỮ LIỆU</p>
+            <p className="mt-2 text-[10px] leading-4 text-gray-600">CCCD và thẻ học sinh chỉ xem qua màn hình duyệt có phân quyền Admin.</p>
+            <Link to="/admin/verifications" className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-[#e94b0a] hover:underline">Mở hồ sơ xác minh <span aria-hidden="true">→</span></Link>
           </div>
         </aside>
 
         <main id="overview" className="min-w-0 flex-1">
-          <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div className="mb-5 rounded-2xl border border-gray-200 bg-gradient-to-r from-white via-white to-orange-50/70 p-4 shadow-[0_2px_8px_rgba(16,24,40,0.035)] sm:p-5 xl:flex xl:items-center xl:justify-between xl:gap-5">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[22px] font-bold tracking-tight text-[#1f2937] sm:text-[24px]">Trang Quản Trị Hệ Thống</h1>
+                <span className="flex size-9 items-center justify-center rounded-xl bg-orange-100 text-[#e94b0a]"><AdminIcon name="grid" className="size-[18px]" /></span>
+                <div><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#e94b0a]">Tổng quan hệ thống</p><h1 className="mt-0.5 text-[22px] font-extrabold tracking-tight text-[#1f2937] sm:text-[25px]">Trang Quản Trị</h1></div>
                 {dashboardLoading && <span className="rounded-full bg-gray-100 px-2 py-1 text-[9px] font-semibold text-gray-500">ĐANG TẢI</span>}
               </div>
-              <p className="mt-1 text-[11px] leading-5 text-gray-500 sm:text-xs">Giám sát hoạt động nền tảng, xử lý tranh chấp và quản lý cấu hình LensRent.</p>
+              <p className="mt-2 text-[11px] leading-5 text-gray-500 sm:text-xs">Theo dõi vận hành LensRent, doanh thu, người dùng, xác minh và các khiếu nại cần xử lý.</p>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="mt-4 flex flex-wrap items-end gap-2 xl:mt-0 xl:justify-end">
               <form onSubmit={(event) => { event.preventDefault(); if (draftRange.from > draftRange.to) { setTrendError('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.'); return } setDateRange(draftRange) }} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 bg-white p-2">
                 <label className="text-[10px] text-gray-500">Từ ngày<input aria-label="Từ ngày" type="date" required max={draftRange.to} value={draftRange.from} onChange={(event) => setDraftRange((range) => ({ ...range, from: event.target.value }))} className="ml-2 rounded border border-gray-200 px-2 py-1.5 text-[11px] text-gray-700" /></label>
                 <label className="text-[10px] text-gray-500">Đến ngày<input aria-label="Đến ngày" type="date" required min={draftRange.from} value={draftRange.to} onChange={(event) => setDraftRange((range) => ({ ...range, to: event.target.value }))} className="ml-2 rounded border border-gray-200 px-2 py-1.5 text-[11px] text-gray-700" /></label>
@@ -387,17 +389,20 @@ export default function AdminDashboardPage() {
               <button onClick={() => exportDashboardCsv(pieItems)} disabled={dashboardLoading || pieItems.length === 0} type="button" className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#f45116] px-3 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#df4610] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5">
                 <AdminIcon name="download" className="size-3.5" /> <span>Xuất báo cáo</span>
               </button>
+              <button onClick={() => { setDashboardLoading(true); setDashboardRevision((value) => value + 1) }} disabled={dashboardLoading} type="button" className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 transition hover:border-orange-200 hover:text-[#e94b0a] disabled:opacity-50">Làm mới tổng quan</button>
             </div>
           </div>
 
           {dashboardError && <div role="alert" className="mb-4 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">{dashboardError}</div>}
           {trendError && <div role="alert" className="mb-4 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">{trendError}</div>}
 
-          <section aria-label="Thống kê tổng quan" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
+          <section aria-label="Thống kê tổng quan" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 xl:gap-4">
             <StatCard title="TỔNG DOANH THU (THÁNG)" value={formatMoney(dashboard?.revenueThisMonth)} note="Thanh toán thành công trong tháng" icon="grid" color="orange" />
             <StatCard title="LƯỢT THUÊ HOÀN TẤT" value={dashboard?.completedRentals?.toLocaleString('vi-VN') ?? '—'} note="Tổng đơn thuê đã hoàn tất" icon="calendar" color="blue" />
             <StatCard title="NGƯỜI DÙNG MỚI" value={dashboard?.newUsersThisMonth?.toLocaleString('vi-VN') ?? '—'} note="Đăng ký trong tháng hiện tại" icon="users" color="violet" />
-            <StatCard title="TRANH CHẤP ĐANG XỬ LÝ" value={dashboard?.openDisputes?.toLocaleString('vi-VN') ?? '—'} note="Đơn đang chờ xử lý tranh chấp" icon="message" color="red" />
+            <StatCard title="KHIẾU NẠI & TRANH CHẤP MỞ" value={dashboard?.openDisputes?.toLocaleString('vi-VN') ?? '—'} note="Báo cáo gian hàng, khách thuê và tranh chấp tiền cọc" icon="message" color="red" />
+            <StatCard title="THIẾT BỊ CHỜ DUYỆT" value={dashboard?.pendingDevices?.toLocaleString('vi-VN') ?? '—'} note="Sản phẩm Owner vừa gửi lên" icon="camera" color="blue" />
+            <StatCard title="GIẤY TỜ CHỜ XÁC MINH" value={dashboard?.pendingVerifications?.toLocaleString('vi-VN') ?? '—'} note="Thẻ sinh viên hoặc căn cước cần Admin xem" icon="shield" color="emerald" />
           </section>
 
           <section className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.85fr)_minmax(285px,0.9fr)]" aria-label="Phân tích và hoạt động mới">
@@ -449,28 +454,15 @@ export default function AdminDashboardPage() {
             <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)] sm:p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-[13px] font-bold text-gray-800">Sức khỏe nền tảng</h2>
-                  <p className="mt-1 text-[10px] text-gray-400">Tình trạng hệ thống trong 30 ngày</p>
+                  <h2 className="text-[13px] font-bold text-gray-800">Hàng đợi cần xử lý</h2>
+                  <p className="mt-1 text-[10px] text-gray-400">Các mục đang cần Admin xem xét</p>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700"><span className="size-1.5 rounded-full bg-emerald-500" /> Hoạt động</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[9px] font-semibold text-orange-700"><span className="size-1.5 rounded-full bg-orange-500" /> Cập nhật từ backend</span>
               </div>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-gray-50 p-3">
-                  <p className="text-[10px] text-gray-500">Uptime</p>
-                  <p className="mt-1 text-lg font-bold text-gray-800">—</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3">
-                  <p className="text-[10px] text-gray-500">Thời gian phản hồi</p>
-                  <p className="mt-1 text-lg font-bold text-gray-800">— <span className="text-xs font-medium text-gray-400">ms</span></p>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-[10px]">
-                <span className="text-gray-500">Database PostgreSQL</span>
-                <span className="font-semibold text-emerald-600">Đang hoạt động</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-[10px]">
-                <span className="text-gray-500">API Backend</span>
-                <span className="font-semibold text-emerald-600">Đang hoạt động</span>
+              <div className="mt-5 divide-y divide-gray-100 rounded-lg border border-gray-100">
+                <Link to="/admin/disputes" className="flex items-center justify-between gap-3 px-3.5 py-3 text-xs hover:bg-gray-50"><span className="font-medium text-gray-600">Khiếu nại & tranh chấp</span><strong className="tabular-nums text-gray-900">{dashboard?.openDisputes?.toLocaleString('vi-VN') ?? '—'} <span className="font-normal text-gray-400">›</span></strong></Link>
+                <Link to="/admin/products?status=PENDING" className="flex items-center justify-between gap-3 px-3.5 py-3 text-xs hover:bg-gray-50"><span className="font-medium text-gray-600">Thiết bị chờ duyệt</span><strong className="tabular-nums text-gray-900">{dashboard?.pendingDevices?.toLocaleString('vi-VN') ?? '—'} <span className="font-normal text-gray-400">›</span></strong></Link>
+                <Link to="/admin/verifications" className="flex items-center justify-between gap-3 px-3.5 py-3 text-xs hover:bg-gray-50"><span className="font-medium text-gray-600">Giấy tờ xác minh</span><strong className="tabular-nums text-gray-900">{dashboard?.pendingVerifications?.toLocaleString('vi-VN') ?? '—'} <span className="font-normal text-gray-400">›</span></strong></Link>
               </div>
             </article>
           </section>

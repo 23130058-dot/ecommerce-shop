@@ -148,7 +148,7 @@ export default function Header({
             <Link className="transition hover:text-[#ff5500]" to="/">Trang chủ</Link>
             <Link className="transition hover:text-[#ff5500]" to="/categories">Danh mục</Link>
             <Link className="transition hover:text-[#ff5500]" to="/compare">So sánh</Link>
-            <Link className="transition hover:text-[#ff5500]" to="/wishlist">Yêu thích</Link>
+            <Link className="transition hover:text-[#ff5500]" to="/stores">Gian hàng</Link>
           </nav>
         </div>
 
@@ -241,22 +241,23 @@ export default function Header({
                 </div>
 
                 <div className="border-t border-gray-100 py-2">
+                  <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Tiện ích dùng chung</p>
                   <Link
                     className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}
                     role="menuitem"
-                    to="/renter/orders"
+                    to="/wishlist"
                   >
-                    Đơn thuê của tôi
+                    Danh sách yêu thích
                   </Link>
-                  <Link
+                  {role !== 'ADMIN' && <Link
                     className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}
                     role="menuitem"
-                    to="/renter/favorites"
+                    to="/account/settings/payments"
                   >
-                    Thiết bị yêu thích
-                  </Link>
+                    Thanh toán & Ví
+                  </Link>}
                   <Link
                     className="block rounded-lg px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 hover:text-[#e94b0a]"
                     onClick={() => setAccountMenuOpen(false)}

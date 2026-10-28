@@ -36,6 +36,8 @@ public final class CatalogDtos {
             String imageKey,
             List<String> images,
             String ownerName,
+            Long ownerId,
+            String storeName,
             int availableQuantity,
             String status
     ) {

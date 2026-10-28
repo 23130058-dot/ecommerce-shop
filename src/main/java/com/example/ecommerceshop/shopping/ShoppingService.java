@@ -3,6 +3,8 @@ package com.example.ecommerceshop.shopping;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CartResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CheckoutResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.ItemRequest;
+import com.example.ecommerceshop.catalog.ProductAvailabilityService;
+import com.example.ecommerceshop.wallet.WalletService;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CartUpdateRequest;
 import com.example.ecommerceshop.shopping.ShoppingDtos.ShoppingItemResponse;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,8 @@ import static com.example.ecommerceshop.shopping.ShoppingDtos.*;
 public class ShoppingService {
     private static final int MAX_COMPARE_ITEMS = 4;
     private static final BigDecimal SERVICE_FEE_RATE = new BigDecimal("0.05");
+    private static final BigDecimal STUDENT_DISCOUNT_RATE = new BigDecimal("0.15");
+    private static final BigDecimal HOME_DELIVERY_FEE = new BigDecimal("50000");
     private static final String PRODUCT_COLUMNS = """
             p.id AS product_id, p.name, p.item_type AS type, c.slug AS category,
             c.name AS category_name, b.name AS brand, p.rating, p.tags,
@@ -48,9 +52,13 @@ public class ShoppingService {
             ) image ON TRUE
             """;
     private final JdbcTemplate jdbc;
+    private final ProductAvailabilityService availabilityService;
+    private final WalletService walletService;
 
-    public ShoppingService(JdbcTemplate jdbc) {
+    public ShoppingService(JdbcTemplate jdbc, ProductAvailabilityService availabilityService, WalletService walletService) {
         this.jdbc = jdbc;
+        this.availabilityService = availabilityService;
+        this.walletService = walletService;
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +128,7 @@ public class ShoppingService {
         releaseExpiredCartItems(cartId);
         releaseOwnerCartItems(userId, cartId);
         List<ShoppingItemResponse> items = queryCartItems(cartId);
-        return calculateCart(items);
+        return calculateCart(items, userId);
     }
 
     @Transactional
@@ -130,28 +138,32 @@ public class ShoppingService {
         ProductRow product = lockActiveProductAvailability(request.productId(), cartId);
         rejectOwnerRenting(userId, product);
         int quantity = request.quantity() == null ? 1 : request.quantity();
-        validateQuantity(quantity, product.availableQuantity());
         validateDatePair(request.startDate(), request.endDate());
+        if (request.startDate() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Vui lòng chọn ngày thuê trước khi thêm thiết bị vào giỏ.");
 
         List<Long> existingIds = jdbc.query("SELECT id FROM cart_items WHERE cart_id = ? AND product_id = ?",
                 (rs, row) -> rs.getLong(1), cartId, request.productId());
+        int oldQuantity = existingIds.isEmpty() ? 0 : jdbc.queryForObject(
+                "SELECT quantity FROM cart_items WHERE id = ?", Integer.class, existingIds.get(0));
+        if (!existingIds.isEmpty()) {
+            CartItemRow existing = findCartItem(cartId, existingIds.get(0));
+            if (!request.startDate().equals(existing.startDate()) || !request.endDate().equals(existing.endDate())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"Thiết bị này đã có trong giỏ với ngày thuê khác. Hãy sửa ngày trong giỏ hàng.");
+            }
+        }
+        availabilityService.requireAvailable(request.productId(),request.startDate(),request.endDate(),oldQuantity+quantity,cartId);
         if (existingIds.isEmpty()) {
             jdbc.update("""
                     INSERT INTO cart_items (cart_id, product_id, quantity, start_date, end_date, reserved_until)
                     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '10 minutes')
-                    """,
-                    cartId, request.productId(), quantity, request.startDate(), request.endDate());
+                    """,cartId, request.productId(), quantity, request.startDate(), request.endDate());
         } else {
-            int oldQuantity = jdbc.queryForObject("SELECT quantity FROM cart_items WHERE id = ?", Integer.class, existingIds.get(0));
-            validateQuantity(oldQuantity + quantity, product.availableQuantity());
             jdbc.update("""
-                    UPDATE cart_items SET quantity = ?, start_date = ?, end_date = ?,
-                        reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
+                    UPDATE cart_items SET quantity = ?, reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
                     WHERE id = ? AND cart_id = ?
-                    """,
-                    oldQuantity + quantity, request.startDate(), request.endDate(), existingIds.get(0), cartId);
+                    """,oldQuantity + quantity, existingIds.get(0), cartId);
         }
-        return calculateCart(queryCartItems(cartId));
+        return calculateCart(queryCartItems(cartId), userId);
     }
 
     @Transactional
@@ -164,33 +176,34 @@ public class ShoppingService {
         int quantity = request.quantity() == null ? item.quantity() : request.quantity();
         LocalDate startDate = request.startDate() == null ? item.startDate() : request.startDate();
         LocalDate endDate = request.endDate() == null ? item.endDate() : request.endDate();
-        validateQuantity(quantity, product.availableQuantity());
         validateDatePair(startDate, endDate);
+        availabilityService.requireAvailable(item.productId(),startDate,endDate,quantity,cartId);
         jdbc.update("""
                 UPDATE cart_items SET quantity = ?, start_date = ?, end_date = ?,
                     reserved_until = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
                 WHERE id = ? AND cart_id = ?
                 """,
                 quantity, startDate, endDate, itemId, cartId);
-        return calculateCart(queryCartItems(cartId));
+        return calculateCart(queryCartItems(cartId), userId);
     }
 
     @Transactional
     public CartResponse removeCartItem(long userId, long itemId) {
         long cartId = ensureCart(userId);
         jdbc.update("DELETE FROM cart_items WHERE id = ? AND cart_id = ?", itemId, cartId);
-        return calculateCart(queryCartItems(cartId));
+        return calculateCart(queryCartItems(cartId), userId);
     }
 
     @Transactional
     public CartResponse clearCart(long userId) {
         long cartId = ensureCart(userId);
         jdbc.update("DELETE FROM cart_items WHERE cart_id = ?", cartId);
-        return calculateCart(List.of());
+        return calculateCart(List.of(), userId);
     }
 
     @Transactional
     public CheckoutResponse checkout(long userId, CheckoutRequest request) {
+        requireVerifiedIdentity(userId, "đặt thuê thiết bị");
         long cartId = ensureCart(userId);
         releaseOwnerCartItems(userId, cartId);
         Integer expiredItems = jdbc.queryForObject("""
@@ -205,7 +218,7 @@ public class ShoppingService {
         if (items.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giỏ hàng đang trống.");
 
         String deliveryMethod = request.deliveryMethod().trim().toUpperCase();
-        String paymentMethod = "MANUAL";
+        String paymentMethod = request.paymentMethod() == null ? "MANUAL" : request.paymentMethod().trim().toUpperCase();
         if (!List.of("HOME", "STORE").contains(deliveryMethod)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phương thức nhận thiết bị không hợp lệ.");
         }
@@ -213,7 +226,10 @@ public class ShoppingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập địa chỉ giao hàng.");
         }
 
+        boolean studentDiscountEligible = hasApprovedStudentCard(userId);
+        BigDecimal rentalSubtotal = BigDecimal.ZERO;
         BigDecimal rentalTotal = BigDecimal.ZERO;
+        BigDecimal studentDiscountAmount = BigDecimal.ZERO;
         BigDecimal depositTotal = BigDecimal.ZERO;
         java.util.Map<Long, BigDecimal> itemSubtotals = new java.util.HashMap<>();
         for (ShoppingItemResponse item : items) {
@@ -222,8 +238,12 @@ public class ShoppingService {
             }
             validateDatePair(item.startDate(), item.endDate());
             validateSchedule(item);
-            BigDecimal subtotal=calculateScheduledSubtotal(item);
+            BigDecimal baseSubtotal = calculateScheduledSubtotal(item);
+            BigDecimal itemDiscount = studentDiscountEligible ? calculateStudentDiscount(baseSubtotal) : BigDecimal.ZERO;
+            BigDecimal subtotal = baseSubtotal.subtract(itemDiscount);
             itemSubtotals.put(item.productId(),subtotal);
+            rentalSubtotal = rentalSubtotal.add(baseSubtotal);
+            studentDiscountAmount = studentDiscountAmount.add(itemDiscount);
             rentalTotal = rentalTotal.add(subtotal);
             depositTotal = depositTotal.add(item.depositAmount().multiply(BigDecimal.valueOf(item.quantity())));
         }
@@ -231,10 +251,7 @@ public class ShoppingService {
                 .sorted(Comparator.comparing(ShoppingItemResponse::productId)).toList()) {
             ProductRow product = lockActiveProductAvailability(item.productId(), cartId);
             rejectOwnerRenting(userId, product);
-            if (item.quantity() > product.availableQuantity()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Số lượng thiết bị còn lại đã thay đổi. Vui lòng cập nhật giỏ hàng.");
-            }
+            availabilityService.requireAvailable(item.productId(),item.startDate(),item.endDate(),item.quantity(),cartId);
             int reserved = jdbc.update("""
                     UPDATE products SET stock = COALESCE(stock, 0) - ?
                     WHERE id = ? AND status = 'ACTIVE' AND COALESCE(stock, 0) >= ?
@@ -244,14 +261,17 @@ public class ShoppingService {
             }
         }
         BigDecimal serviceFee = rentalTotal.multiply(SERVICE_FEE_RATE).setScale(0, RoundingMode.HALF_UP);
-        BigDecimal total = rentalTotal.add(depositTotal).add(serviceFee);
+        BigDecimal deliveryFee = "HOME".equals(deliveryMethod) ? HOME_DELIVERY_FEE : BigDecimal.ZERO;
+        BigDecimal total = rentalTotal.add(depositTotal).add(serviceFee).add(deliveryFee);
         String rentalCode = "LR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         Long rentalId = jdbc.queryForObject("""
                 INSERT INTO rentals (
-                    rental_code, renter_id, total_amount, deposit_amount, service_fee, status,
+                    rental_code, renter_id, total_amount, deposit_amount, service_fee,
+                    student_discount_amount, delivery_fee, status,
                     delivery_method, delivery_address, district, city, contact_name, contact_phone, contact_email
-                ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """, Long.class, rentalCode, userId, total, depositTotal, serviceFee,
+                studentDiscountAmount, deliveryFee,
                 deliveryMethod, request.deliveryAddress(), request.district(), request.city(),
                 request.contactName().trim(), request.contactPhone().trim(), request.contactEmail());
 
@@ -261,6 +281,9 @@ public class ShoppingService {
                     INSERT INTO rental_items (rental_id, product_id, quantity, start_date, end_date, daily_price, subtotal)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, rentalId, item.productId(), item.quantity(), item.startDate(), item.endDate(), item.price(), subtotal);
+        }
+        if ("WALLET".equals(paymentMethod)) {
+            walletService.chargeRental(userId, rentalId, rentalTotal.add(serviceFee).add(deliveryFee), depositTotal);
         }
         jdbc.update("""
                 INSERT INTO payments (rental_id, method, provider, amount, status, paid_at)
@@ -274,7 +297,8 @@ public class ShoppingService {
                 """,rentalCode,rentalId);
         jdbc.update("DELETE FROM cart_items WHERE cart_id = ?", cartId);
         return new CheckoutResponse(rentalId, rentalCode, total, rentalTotal, depositTotal, serviceFee,
-                "PENDING", "PAID", paymentMethod, LocalDateTime.now());
+                "PENDING", "PAID", paymentMethod, LocalDateTime.now(), rentalSubtotal,
+                studentDiscountAmount, deliveryFee);
     }
 
     @Transactional(readOnly = true)
@@ -306,6 +330,43 @@ public class ShoppingService {
     }
 
     @Transactional(readOnly = true)
+    public List<RenterNotificationResponse> getRenterNotifications(long userId) {
+        return jdbc.query("""
+                SELECT n.id,n.type,n.title,n.message,n.target_url,n.created_at,n.read_at
+                FROM user_notifications n
+                LEFT JOIN user_notification_preferences prefs ON prefs.user_id=n.user_id
+                WHERE n.user_id=? AND COALESCE(prefs.in_app_enabled,TRUE)
+                  AND CASE
+                    WHEN UPPER(n.type) = 'RETURN' THEN COALESCE(prefs.return_reminders,TRUE)
+                    WHEN UPPER(n.type) IN ('BOOKING','ORDER','DAMAGE') THEN COALESCE(prefs.order_updates,TRUE)
+                    WHEN UPPER(n.type) IN ('PAYMENT','WALLET','DEPOSIT') THEN COALESCE(prefs.payment_updates,TRUE)
+                    WHEN UPPER(n.type) IN ('DISPUTE','REPORT') THEN COALESCE(prefs.disputes,TRUE)
+                    WHEN UPPER(n.type) IN ('PRODUCT_IDEA','RECOMMENDATION') THEN COALESCE(prefs.product_recommendations,FALSE)
+                    WHEN UPPER(n.type) IN ('PROMOTION','COUPON') THEN COALESCE(prefs.promotions,FALSE)
+                    ELSE TRUE
+                  END
+                  AND NOT (COALESCE(prefs.quiet_hours_enabled,FALSE)
+                    AND UPPER(n.type) IN ('PRODUCT_IDEA','RECOMMENDATION','PROMOTION','COUPON')
+                    AND ((prefs.quiet_start < prefs.quiet_end AND
+                          (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::time >= prefs.quiet_start AND
+                          (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::time < prefs.quiet_end)
+                      OR (prefs.quiet_start >= prefs.quiet_end AND
+                          ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::time >= prefs.quiet_start OR
+                           (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::time < prefs.quiet_end))))
+                ORDER BY n.id DESC LIMIT 100
+                """,
+                (rs,n)->new RenterNotificationResponse(rs.getLong("id"),rs.getString("type"),rs.getString("title"),
+                        rs.getString("message"),rs.getString("target_url"),
+                        rs.getTimestamp("created_at")==null?null:rs.getTimestamp("created_at").toLocalDateTime(),
+                        rs.getTimestamp("read_at")==null?null:rs.getTimestamp("read_at").toLocalDateTime()),userId);
+    }
+
+    @Transactional
+    public void markRenterNotificationsRead(long userId) {
+        jdbc.update("UPDATE user_notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND read_at IS NULL",userId);
+    }
+
+    @Transactional(readOnly = true)
     public List<CurrentRentalItem> getCurrentRentalItems(long userId) {
         return jdbc.query("""
                 SELECT r.id AS rental_id, r.rental_code, ri.status AS rental_status,
@@ -333,8 +394,10 @@ public class ShoppingService {
     public RentalDetail getRental(long userId, long rentalId) {
         List<RentalDetail> rentals = jdbc.query("""
                 SELECT r.id, r.rental_code, r.status, r.total_amount,
-                       GREATEST(r.total_amount - r.deposit_amount - r.service_fee, 0) AS rental_amount,
-                       r.deposit_amount, r.service_fee, r.delivery_method, r.delivery_address,
+                       COALESCE((SELECT SUM(ri.subtotal) FROM rental_items ri WHERE ri.rental_id = r.id),
+                                GREATEST(r.total_amount - r.deposit_amount - r.service_fee - r.delivery_fee, 0)) AS rental_amount,
+                       r.deposit_amount, r.service_fee, r.student_discount_amount, r.delivery_fee,
+                       r.delivery_method, r.delivery_address,
                        r.district, r.city, r.contact_name, r.contact_phone, r.contact_email,
                        payment.method AS payment_method, payment.status AS payment_status, r.created_at
                 FROM rentals r
@@ -346,6 +409,7 @@ public class ShoppingService {
                 rs.getLong("id"), rs.getString("rental_code"), rs.getString("status"),
                 zero(rs.getBigDecimal("total_amount")), zero(rs.getBigDecimal("rental_amount")),
                 zero(rs.getBigDecimal("deposit_amount")), zero(rs.getBigDecimal("service_fee")),
+                zero(rs.getBigDecimal("student_discount_amount")), zero(rs.getBigDecimal("delivery_fee")),
                 rs.getString("delivery_method"), rs.getString("delivery_address"), rs.getString("district"),
                 rs.getString("city"), rs.getString("contact_name"), rs.getString("contact_phone"),
                 rs.getString("contact_email"), rs.getString("payment_method"), rs.getString("payment_status"),
@@ -355,7 +419,8 @@ public class ShoppingService {
         if (rentals.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
         RentalDetail rental = rentals.get(0);
         return new RentalDetail(rental.rentalId(), rental.rentalCode(), rental.status(), rental.totalAmount(),
-                rental.rentalAmount(), rental.depositAmount(), rental.serviceFee(), rental.deliveryMethod(),
+                rental.rentalAmount(), rental.depositAmount(), rental.serviceFee(), rental.studentDiscountAmount(),
+                rental.deliveryFee(), rental.deliveryMethod(),
                 rental.deliveryAddress(), rental.district(), rental.city(), rental.contactName(), rental.contactPhone(),
                 rental.contactEmail(), rental.paymentMethod(), rental.paymentStatus(), rental.createdAt(),
                 queryRentalItems(rental.rentalId()));
@@ -379,6 +444,7 @@ public class ShoppingService {
             jdbc.update("UPDATE rental_items SET status='CANCELLED' WHERE id=?",itemId);
         }
         jdbc.update("UPDATE rentals SET status='CANCELLED' WHERE id=?",rentalId);
+        walletService.refundCancelledRental(rentalId);
         jdbc.update("UPDATE payments SET status='REFUNDED' WHERE rental_id=? AND status IN ('PAID','SUCCESS','COMPLETED')",rentalId);
         jdbc.update("INSERT INTO user_notifications(user_id,type,title,message,target_url) SELECT DISTINCT p.owner_id,'ORDER','Renter đã hủy đơn','Đơn thuê '||r.rental_code||' đã được hủy.','/owner/bookings' FROM rentals r JOIN rental_items ri ON ri.rental_id=r.id JOIN products p ON p.id=ri.product_id WHERE r.id=?",rentalId);
     }
@@ -417,6 +483,38 @@ public class ShoppingService {
                 """, (rs,n)->new RentalChatResponse(rs.getLong("owner_id"),rs.getString("owner_name"),
                 rs.getString("last_message"),rs.getTimestamp("last_at")==null?null:rs.getTimestamp("last_at").toLocalDateTime(),
                 rs.getLong("unread")),rentalId,rentalId,renterId,rentalId,renterId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RenterChatConversationResponse> getRenterChatConversations(long renterId) {
+        return jdbc.query("""
+                WITH conversations AS (
+                    SELECT DISTINCT r.id AS rental_id,r.rental_code,r.renter_id,p.owner_id,
+                           COALESCE(owner.full_name,owner.email,'Chủ thiết bị') AS owner_name
+                    FROM rentals r
+                    JOIN rental_items ri ON ri.rental_id=r.id
+                    JOIN products p ON p.id=ri.product_id
+                    JOIN users owner ON owner.id=p.owner_id
+                    WHERE r.renter_id=?
+                )
+                SELECT c.rental_id,c.rental_code,c.owner_id,c.owner_name,last.body AS last_message,
+                       last.created_at AS last_message_at,
+                       (SELECT COUNT(*) FROM owner_chat_messages incoming
+                        WHERE incoming.rental_id=c.rental_id AND incoming.sender_id=c.owner_id
+                          AND incoming.receiver_id=c.renter_id AND incoming.read_at IS NULL) AS unread_count
+                FROM conversations c
+                JOIN LATERAL (
+                    SELECT m.body,m.created_at
+                    FROM owner_chat_messages m
+                    WHERE m.rental_id=c.rental_id
+                      AND ((m.sender_id=c.owner_id AND m.receiver_id=c.renter_id)
+                        OR (m.sender_id=c.renter_id AND m.receiver_id=c.owner_id))
+                    ORDER BY m.id DESC LIMIT 1
+                ) last ON TRUE
+                ORDER BY last.created_at DESC,c.rental_id DESC,c.owner_id
+                """,(rs,n)->new RenterChatConversationResponse(rs.getLong("rental_id"),rs.getString("rental_code"),
+                rs.getLong("owner_id"),rs.getString("owner_name"),rs.getString("last_message"),
+                rs.getTimestamp("last_message_at").toLocalDateTime(),rs.getLong("unread_count")),renterId);
     }
 
     @Transactional
@@ -511,33 +609,67 @@ public class ShoppingService {
 
     private List<RentalItemDetail> queryRentalItems(long rentalId) {
         return jdbc.query("""
-                SELECT ri.product_id, p.name, COALESCE(image.image_url, '') AS image_key,
-                       ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal
+                SELECT ri.id rental_item_id,ri.product_id, p.name, COALESCE(image.image_url, '') AS image_key,
+                       ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal,
+                       damage.description damage_description,damage.estimated_amount damage_amount,damage.status damage_status,
+                       dispute.status dispute_status,settlement.refunded_amount deposit_refunded,
+                       settlement.deducted_amount deposit_deducted,settlement.status deposit_status
                 FROM rental_items ri JOIN products p ON p.id = ri.product_id
                 LEFT JOIN LATERAL (
                     SELECT image_url FROM product_images WHERE product_id = p.id
                     ORDER BY is_primary DESC NULLS LAST, id LIMIT 1
                 ) image ON TRUE
+                LEFT JOIN damage_reports damage ON damage.rental_item_id=ri.id
+                LEFT JOIN LATERAL (SELECT status FROM rental_disputes WHERE rental_item_id=ri.id ORDER BY id DESC LIMIT 1) dispute ON TRUE
+                LEFT JOIN deposit_settlements settlement ON settlement.rental_item_id=ri.id
                 WHERE ri.rental_id = ? ORDER BY ri.id
                 """, (rs, rowNum) -> new RentalItemDetail(
-                rs.getLong("product_id"), rs.getString("name"), rs.getString("image_key"), rs.getInt("quantity"),
+                rs.getLong("rental_item_id"),rs.getLong("product_id"), rs.getString("name"), rs.getString("image_key"), rs.getInt("quantity"),
                 rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
-                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal"))
+                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal")),
+                rs.getString("damage_description"),zero(rs.getBigDecimal("damage_amount")),rs.getString("damage_status"),
+                rs.getString("dispute_status"),zero(rs.getBigDecimal("deposit_refunded")),
+                zero(rs.getBigDecimal("deposit_deducted")),rs.getString("deposit_status")
         ), rentalId);
     }
 
-    private CartResponse calculateCart(List<ShoppingItemResponse> items) {
-        BigDecimal rentalTotal = BigDecimal.ZERO;
+    private CartResponse calculateCart(List<ShoppingItemResponse> items, long userId) {
+        BigDecimal rentalSubtotal = BigDecimal.ZERO;
+        BigDecimal studentDiscountAmount = BigDecimal.ZERO;
         BigDecimal depositTotal = BigDecimal.ZERO;
+        boolean studentDiscountEligible = hasApprovedStudentCard(userId);
         for (ShoppingItemResponse item : items) {
             if (item.startDate() != null && item.endDate() != null && item.endDate().isAfter(item.startDate())) {
-                rentalTotal = rentalTotal.add(calculateScheduledSubtotal(item));
+                BigDecimal itemSubtotal = calculateScheduledSubtotal(item);
+                rentalSubtotal = rentalSubtotal.add(itemSubtotal);
+                if (studentDiscountEligible) studentDiscountAmount = studentDiscountAmount.add(calculateStudentDiscount(itemSubtotal));
             }
             depositTotal = depositTotal.add(item.depositAmount().multiply(BigDecimal.valueOf(item.quantity())));
         }
+        BigDecimal rentalTotal = rentalSubtotal.subtract(studentDiscountAmount);
         BigDecimal serviceFee = rentalTotal.multiply(SERVICE_FEE_RATE).setScale(0, RoundingMode.HALF_UP);
-        return new CartResponse(items, rentalTotal, depositTotal, serviceFee,
+        return new CartResponse(items, rentalSubtotal, studentDiscountAmount, studentDiscountEligible,
+                rentalTotal, depositTotal, serviceFee,
                 rentalTotal.add(depositTotal).add(serviceFee));
+    }
+
+    private BigDecimal calculateStudentDiscount(BigDecimal rentalSubtotal) {
+        return rentalSubtotal.multiply(STUDENT_DISCOUNT_RATE).setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private boolean hasApprovedStudentCard(long userId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM account_verifications WHERE user_id = ? AND student_card_status = 'APPROVED'",
+                Integer.class, userId);
+        return count != null && count > 0;
+    }
+
+    private void requireVerifiedIdentity(long userId, String action) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM account_verifications WHERE user_id = ? AND identity_status = 'APPROVED'",
+                Integer.class, userId);
+        if (count == null || count == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Bạn cần gửi CCCD và chờ Admin duyệt trong Cài đặt tài khoản → Xác minh cá nhân trước khi " + action + ".");
+        }
     }
 
     private List<ShoppingItemResponse> queryCartItems(long cartId) {

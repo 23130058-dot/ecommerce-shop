@@ -3,7 +3,9 @@ import { Link, useLocation } from 'react-router-dom'
 import { categories } from '../../data/products'
 import { resolveProductImage } from '../home/productImageMap.js'
 import DataTable from '../shared/DataTable.jsx'
-import { getOwnerProducts } from '../../services/ownerApi.js'
+import ConfirmDialog from '../layout/ConfirmDialog.jsx'
+import { deleteOwnerProduct, getOwnerProducts } from '../../services/ownerApi.js'
+import { showToast } from '../../services/toast.js'
 
 const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
 
@@ -15,6 +17,8 @@ export default function EquipmentList() {
     const [equipment, setEquipment] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const [deleteTarget, setDeleteTarget] = useState(null)
+    const [deletingId, setDeletingId] = useState(null)
 
     useEffect(() => {
         const controller = new AbortController()
@@ -45,16 +49,32 @@ export default function EquipmentList() {
 
     const availableCount = equipment.reduce((sum, item) => String(item.status || '').toUpperCase() === 'ACTIVE' ? sum + Number(item.availableQuantity || 0) : sum, 0)
     const rentedCount = equipment.reduce((sum, item) => sum + Number(item.currentlyRentedQuantity || 0), 0)
+    const deleteEquipment = async () => {
+        if (!deleteTarget) return
+        setDeletingId(deleteTarget.id)
+        try {
+            await deleteOwnerProduct(deleteTarget.id)
+            setEquipment((items) => items.filter((item) => String(item.id) !== String(deleteTarget.id)))
+            showToast('Đã gỡ thiết bị khỏi gian hàng. Lịch sử thuê được giữ nguyên.', 'success')
+            setDeleteTarget(null)
+        } catch (deleteError) {
+            showToast(deleteError.message, 'error')
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
     const columns = [
         { key: 'name', header: 'Thiết bị', className: 'min-w-[220px]', render: (item) => <div className="flex items-center gap-3"><div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1"><img src={resolveProductImage(item.imageKey)} alt={item.name} className="max-h-full max-w-full object-contain" /></div><div><p className="font-semibold text-[#172033]">{item.name}</p><p className="mt-1 text-[10px] text-gray-500">{item.brand ? `${item.brand} · ` : ''}{item.type}</p></div></div> },
         { key: 'categoryName', header: 'Danh mục', render: (item) => item.categoryName || 'Khác' },
         { key: 'dailyPrice', header: 'Giá thuê', className: 'min-w-[128px] whitespace-nowrap', cellClassName: 'min-w-[128px] whitespace-nowrap', render: (item) => <><span className="font-semibold text-[#172033]">{money(item.dailyPrice)}</span><span className="mt-1 block text-[10px] text-gray-400">/ ngày</span></> },
         { key: 'availableQuantity', header: 'Số lượng', className: 'whitespace-nowrap', render: (item) => <><span className="font-semibold text-green-700">Còn {Number(item.availableQuantity || 0)}</span><span className="ml-2 text-gray-500">· thuê {Number(item.currentlyRentedQuantity || 0)}</span></> },
-        { key: 'status', header: 'Trạng thái', render: (item) => ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL'].includes(String(item.status || '').toUpperCase()) ? <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-700">Chờ Admin duyệt</span> : item.status === 'INACTIVE' ? <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-medium text-gray-600">Tạm ẩn</span> : Number(item.currentlyRentedQuantity) > 0 ? <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="rounded-full bg-green-50 px-3 py-1 text-[10px] font-medium text-green-600">Sẵn sàng</span> },
-        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[164px] whitespace-nowrap text-right', cellClassName: 'min-w-[164px] whitespace-nowrap text-right', render: (item) => <div className="flex flex-nowrap justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="inline-flex min-w-[58px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-gray-300 px-2.5 py-2 text-[10px] font-semibold text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="inline-flex min-w-[70px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-[#F45116] px-2.5 py-2 text-[10px] font-semibold text-[#F45116] hover:bg-orange-50">Chi tiết</Link></div> },
+        { key: 'status', header: 'Trạng thái', className: 'min-w-[154px] whitespace-nowrap', cellClassName: 'min-w-[154px] whitespace-nowrap', render: (item) => ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL'].includes(String(item.status || '').toUpperCase()) ? <span className="inline-flex whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-700">Chờ Admin duyệt</span> : item.status === 'INACTIVE' ? <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1 text-[10px] font-medium text-gray-600">Tạm ẩn</span> : Number(item.currentlyRentedQuantity) > 0 ? <span className="inline-flex whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 text-[10px] font-medium text-blue-600">Đang thuê / đã đặt</span> : <span className="inline-flex whitespace-nowrap rounded-full bg-green-50 px-3 py-1 text-[10px] font-medium text-green-600">Sẵn sàng</span> },
+        { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[248px] whitespace-nowrap text-right', cellClassName: 'min-w-[248px] whitespace-nowrap text-right', render: (item) => <div className="flex flex-nowrap justify-end gap-2"><Link to={`/owner/equipment/${item.id}/edit`} className="inline-flex min-w-[58px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-gray-300 px-2.5 py-2 text-[10px] font-semibold text-gray-700 hover:border-[#F45116] hover:text-[#F45116]">Sửa</Link><Link to={`/owner/product/${item.id}`} className="inline-flex min-w-[70px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-[#F45116] px-2.5 py-2 text-[10px] font-semibold text-[#F45116] hover:bg-orange-50">Chi tiết</Link><button aria-label={`Xóa ${item.name}`} onClick={() => setDeleteTarget(item)} type="button" className="inline-flex min-w-[58px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-rose-200 px-2.5 py-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50">Xóa</button></div> },
     ]
 
     return (
+        <>
         <div className="bg-[#f7f8fa] p-6">
             <div className="mb-5 text-sm text-gray-500">Quản lý cho thuê <span className="mx-2">/</span><span className="text-gray-800">Quản lý thiết bị</span></div>
 
@@ -83,5 +103,16 @@ export default function EquipmentList() {
 
             <DataTable columns={columns} rows={filteredEquipment} rowKey={(item) => item.id} loading={loading} error={error} searchable={false} emptyMessage={equipment.length ? 'Không tìm thấy thiết bị phù hợp.' : 'Bạn chưa đăng thiết bị nào. Chọn “Thêm thiết bị” để tạo tin cho thuê đầu tiên.'} pageSize={10} />
         </div>
+        <ConfirmDialog
+            open={Boolean(deleteTarget)}
+            title="Gỡ thiết bị khỏi gian hàng?"
+            message={deleteTarget ? `“${deleteTarget.name}” sẽ không còn hiển thị để khách thuê. Lịch sử thuê được giữ lại. Không thể gỡ khi thiết bị còn đơn chờ xử lý hoặc đang được thuê.` : ''}
+            confirmLabel="Gỡ thiết bị"
+            tone="danger"
+            busy={deletingId === deleteTarget?.id}
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={deleteEquipment}
+        />
+        </>
     )
 }

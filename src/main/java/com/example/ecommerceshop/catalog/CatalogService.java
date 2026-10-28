@@ -14,7 +14,7 @@ import java.util.Set;
 
 @Service
 public class CatalogService {
-    private static final Set<String> SORT_OPTIONS = Set.of("popular", "newest", "price");
+    private static final Set<String> SORT_OPTIONS = Set.of("popular", "newest", "price", "best-selling");
     private static final int MAX_PAGE_SIZE = 100;
     private final CatalogProductRepository productRepository;
 
@@ -74,6 +74,8 @@ public class CatalogService {
                 product.getImageKey(),
                 images,
                 product.getOwnerName(),
+                product.getOwnerId(),
+                product.getStoreName(),
                 availableQuantity,
                 availableQuantity > 0 ? "Sẵn sàng" : "Đã thuê"
         );

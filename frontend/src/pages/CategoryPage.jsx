@@ -92,17 +92,17 @@ function CatalogProductCard({ product }) {
   return (
     <article className="group overflow-hidden rounded-lg border border-gray-200 bg-white transition hover:border-gray-300 hover:shadow-md">
       <Link className="block" to={detailPath} aria-label={'Xem chi tiết ' + product.name}>
-        <div className="relative flex aspect-[1.08/1] items-center justify-center overflow-hidden bg-[#f0f3f7] p-6">
+        <div className="relative flex aspect-[1.28/1] items-center justify-center overflow-hidden bg-[#f0f3f7] p-4">
           <img className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.04]" src={resolveProductImage(product.imageKey)} alt={product.name} />
           {product.status === 'Đã thuê' && (
             <span className="absolute left-3 top-3 rounded bg-[#fff0eb] px-2 py-1 text-xs font-semibold text-[#e4501a]">ĐANG ĐƯỢC THUÊ</span>
           )}
           <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-600">★ {product.rating}</span>
         </div>
-        <div className="min-h-[87px] px-3.5 py-3">
+        <div className="min-h-[82px] px-3.5 py-2.5">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{product.type}</p>
           <h3 className="mt-1.5 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-gray-800">{product.name}</h3>
-          <p className="mt-1 text-xs text-gray-500">{(product.tags || []).slice(0, 2).join(' · ')}</p>
+          <p className="mt-1 truncate text-xs text-gray-500">{(product.tags || []).slice(0, 2).join(' · ')}</p>
         </div>
       </Link>
       <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3.5 py-2.5">
@@ -289,7 +289,7 @@ export default function CategoryPage({ categorySlug }) {
             ) : isLoading && products.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500" role="status">Đang tải thiết bị...</div>
             ) : visibleProducts.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {visibleProducts.map((product) => <CatalogProductCard key={product.id} product={product} />)}
               </div>
             ) : (

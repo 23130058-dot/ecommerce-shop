@@ -12,7 +12,11 @@ import com.example.ecommerceshop.shopping.ShoppingDtos.RentalSummary;
 import com.example.ecommerceshop.shopping.ShoppingDtos.CurrentRentalItem;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.RentalChatMessageResponse;
+import com.example.ecommerceshop.shopping.ShoppingDtos.RenterChatConversationResponse;
 import com.example.ecommerceshop.shopping.ShoppingDtos.SendRentalChatMessageRequest;
+import com.example.ecommerceshop.shopping.ShoppingDtos.RenterNotificationResponse;
+import com.example.ecommerceshop.marketplace.MarketplaceService;
+import com.example.ecommerceshop.marketplace.MarketplaceDtos.CreateRentalDisputeRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,9 +38,11 @@ import java.util.List;
 @RequestMapping("/api/shopping")
 public class ShoppingController {
     private final ShoppingService shoppingService;
+    private final MarketplaceService marketplaceService;
 
-    public ShoppingController(ShoppingService shoppingService) {
+    public ShoppingController(ShoppingService shoppingService, MarketplaceService marketplaceService) {
         this.shoppingService = shoppingService;
+        this.marketplaceService = marketplaceService;
     }
 
     @GetMapping("/wishlist")
@@ -126,6 +132,17 @@ public class ShoppingController {
         return shoppingService.getRentals(userId(jwt));
     }
 
+    @GetMapping("/notifications")
+    public List<RenterNotificationResponse> renterNotifications(@AuthenticationPrincipal Jwt jwt) {
+        return shoppingService.getRenterNotifications(userId(jwt));
+    }
+
+    @PatchMapping("/notifications/read-all")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void markRenterNotificationsRead(@AuthenticationPrincipal Jwt jwt) {
+        shoppingService.markRenterNotificationsRead(userId(jwt));
+    }
+
     @GetMapping("/renter/current-rentals")
     public List<CurrentRentalItem> currentRentalItems(@AuthenticationPrincipal Jwt jwt) {
         return shoppingService.getCurrentRentalItems(userId(jwt));
@@ -146,6 +163,18 @@ public class ShoppingController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void requestReturn(@AuthenticationPrincipal Jwt jwt,@PathVariable long rentalId) {
         shoppingService.requestReturn(userId(jwt),rentalId);
+    }
+
+    @PostMapping("/rentals/{rentalId}/disputes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public java.util.Map<String,Long> dispute(@AuthenticationPrincipal Jwt jwt,@PathVariable long rentalId,
+                                              @Valid @RequestBody CreateRentalDisputeRequest request) {
+        return java.util.Map.of("id",marketplaceService.createRentalDispute(userId(jwt),rentalId,request));
+    }
+
+    @GetMapping("/chats")
+    public List<RenterChatConversationResponse> renterChats(@AuthenticationPrincipal Jwt jwt) {
+        return shoppingService.getRenterChatConversations(userId(jwt));
     }
 
     @GetMapping("/rentals/{rentalId}/chats")
