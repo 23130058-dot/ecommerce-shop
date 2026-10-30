@@ -1,6 +1,6 @@
 
 import { useEffect, useState, useMemo } from 'react'
-import {getOwnerRevenue, getOwnerProducts,} from '../../api/ownerApi'
+// import {getOwnerRevenue, getOwnerProducts} from "../../services/ownerApi.js";
 import { ownerDashboardData } from '../../data/ownerData'
 const API_URL = import.meta.env.VITE_API_URL || ''
 

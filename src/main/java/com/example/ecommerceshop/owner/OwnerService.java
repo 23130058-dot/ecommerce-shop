@@ -13,6 +13,9 @@ import java.time.LocalDate;
 import java.time.Year;
 import java.util.*;
 import java.math.BigDecimal;
+import java.time.YearMonth;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.example.ecommerceshop.owner.OwnerDtos.RentalResponse;
 import com.example.ecommerceshop.owner.OwnerDtos.MonthlyRevenue;
@@ -75,32 +78,45 @@ public class OwnerService {
         User owner = getCurrentOwner(jwt);
 
         String sql = """
-            SELECT p.id,
-                   p.name,
-                   p.item_type,
-                   c.slug AS category,
-                   c.name AS category_name,
-                   b.name AS brand,
-                   p.description,
-                   p.daily_price,
-                   p.deposit_amount,
-                   p.stock,
-                   p.status,
-                   p.tags,
-                   COALESCE(image.image_url, '') AS image_key
-            FROM products p
-            LEFT JOIN categories c ON c.id = p.category_id
-            LEFT JOIN brands b ON b.id = p.brand_id
-            LEFT JOIN LATERAL (
-                SELECT pi.image_url
-                FROM product_images pi
-                WHERE pi.product_id = p.id
-                ORDER BY pi.is_primary DESC NULLS LAST, pi.id
-                LIMIT 1
-            ) image ON TRUE
-            WHERE p.owner_id = ?
-            ORDER BY p.created_at DESC NULLS LAST, p.id DESC
-            """;
+        SELECT p.id,
+               p.name,
+               p.item_type,
+               c.slug AS category,
+               c.name AS category_name,
+               b.name AS brand,
+               p.description,
+               p.daily_price,
+               p.deposit_amount,
+               p.stock,
+               p.status,
+               p.tags,
+               COALESCE(image.image_url, '') AS image_key,
+               COALESCE(rented.quantity, 0) AS currently_rented
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN brands b ON b.id = p.brand_id
+
+        LEFT JOIN LATERAL (
+            SELECT pi.image_url
+            FROM product_images pi
+            WHERE pi.product_id = p.id
+            ORDER BY pi.is_primary DESC NULLS LAST, pi.id
+            LIMIT 1
+        ) image ON TRUE
+
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(ri.quantity), 0) AS quantity
+            FROM rental_items ri
+            JOIN rentals r ON r.id = ri.rental_id
+            WHERE ri.product_id = p.id
+              AND UPPER(COALESCE(r.status, '')) IN ('CONFIRMED', 'ACTIVE')
+              AND ri.start_date <= CURRENT_DATE
+              AND ri.end_date >= CURRENT_DATE
+        ) rented ON TRUE
+
+        WHERE p.owner_id = ?
+        ORDER BY p.created_at DESC NULLS LAST, p.id DESC
+        """;
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             String rawTags = rs.getString("tags");
@@ -113,6 +129,10 @@ public class OwnerService {
                     .toList();
 
             int stock = Math.max(0, rs.getInt("stock"));
+            int currentlyRented = Math.max(
+                    0, rs.getInt("currently_rented")
+            );
+            int available = Math.max(0, stock - currentlyRented);
 
             return new ProductResponse(
                     rs.getLong("id"),
@@ -125,14 +145,16 @@ public class OwnerService {
                     rs.getBigDecimal("daily_price"),
                     rs.getBigDecimal("deposit_amount"),
                     stock,
-                    stock,
+                    available,
                     rs.getString("status"),
                     rs.getString("image_key"),
                     List.of(),
-                    tags
+                    tags,
+                    currentlyRented
             );
         }, owner.getId());
     }
+
 
     @Transactional(readOnly = true)
     public ProductResponse getProductById(Jwt jwt, Long productId) {
@@ -681,30 +703,51 @@ public class OwnerService {
             );
         }
 
+
         String sql = """
-        WITH paid_rentals AS (
-            SELECT DISTINCT ON (pay.rental_id)
-                pay.rental_id,
-                DATE_TRUNC('month', pay.paid_at) AS revenue_month
-            FROM payments pay
-            WHERE UPPER(pay.status) = 'PAID'
-              AND pay.paid_at >= ?
-              AND pay.paid_at < ?
-            ORDER BY pay.rental_id, pay.paid_at
-        )
+    WITH owner_rental_totals AS (
         SELECT
-            EXTRACT(MONTH FROM pr.revenue_month)::INTEGER
-                AS month_number,
-            COALESCE(SUM(ri.subtotal), 0) AS revenue
-        FROM paid_rentals pr
-        JOIN rental_items ri ON ri.rental_id = pr.rental_id
+            ri.rental_id,
+            SUM(
+                CASE
+                    WHEN p.owner_id = ?
+                    THEN COALESCE(ri.subtotal, 0)
+                    ELSE 0
+                END
+            ) AS owner_subtotal,
+            SUM(COALESCE(ri.subtotal, 0)) AS total_subtotal
+        FROM rental_items ri
         JOIN products p ON p.id = ri.product_id
-        WHERE p.owner_id = ?
-        GROUP BY EXTRACT(MONTH FROM pr.revenue_month)
-        ORDER BY month_number
-        """;
+        GROUP BY ri.rental_id
+    ),
+    paid_payments AS (
+        SELECT
+            DATE_TRUNC('month', pay.paid_at) AS revenue_month,
+            CASE
+                WHEN ort.total_subtotal > 0
+                THEN pay.amount * ort.owner_subtotal
+                     / ort.total_subtotal
+                ELSE 0
+            END AS revenue
+        FROM payments pay
+        JOIN owner_rental_totals ort
+            ON ort.rental_id = pay.rental_id
+        WHERE UPPER(COALESCE(pay.status, '')) = 'PAID'
+          AND pay.paid_at >= ?
+          AND pay.paid_at < ?
+          AND ort.owner_subtotal > 0
+    )
+    SELECT
+        EXTRACT(MONTH FROM revenue_month)::INTEGER AS month_number,
+        COALESCE(SUM(revenue), 0) AS revenue
+    FROM paid_payments
+    GROUP BY EXTRACT(MONTH FROM revenue_month)
+    ORDER BY month_number
+    """;
+
 
         Map<Integer, BigDecimal> revenueByMonth = new HashMap<>();
+
 
         jdbcTemplate.query(
                 sql,
@@ -714,13 +757,13 @@ public class OwnerService {
                             rs.getBigDecimal("revenue")
                     );
                 },
+                owner.getId(),
                 java.sql.Timestamp.valueOf(
                         LocalDate.of(year, 1, 1).atStartOfDay()
                 ),
                 java.sql.Timestamp.valueOf(
                         LocalDate.of(year + 1, 1, 1).atStartOfDay()
-                ),
-                owner.getId()
+                )
         );
 
         List<MonthlyRevenue> monthlyRevenue = new ArrayList<>();
@@ -822,5 +865,250 @@ public class OwnerService {
 
         return value.trim();
     }
+
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getScheduleOverview(
+            Jwt jwt,
+            YearMonth month
+    ) {
+        User owner = getCurrentOwner(jwt);
+
+        LocalDate monthStart = month.atDay(1);
+        LocalDate monthEnd = month.atEndOfMonth();
+
+        Integer totalProducts = jdbcTemplate.queryForObject("""
+        SELECT COUNT(*)
+        FROM products
+        WHERE owner_id = ?
+        """, Integer.class, owner.getId());
+
+        Integer activeProducts = jdbcTemplate.queryForObject("""
+        SELECT COUNT(DISTINCT p.id)
+        FROM products p
+        JOIN rental_items ri ON ri.product_id = p.id
+        JOIN rentals r ON r.id = ri.rental_id
+        WHERE p.owner_id = ?
+          AND UPPER(r.status) IN ('CONFIRMED', 'ACTIVE')
+          AND ri.start_date <= ?
+          AND ri.end_date >= ?
+        """,
+                Integer.class,
+                owner.getId(),
+                java.sql.Date.valueOf(monthEnd),
+                java.sql.Date.valueOf(monthStart)
+        );
+
+        Integer ordersThisMonth = jdbcTemplate.queryForObject("""
+        SELECT COUNT(DISTINCT r.id)
+        FROM rentals r
+        JOIN rental_items ri ON ri.rental_id = r.id
+        JOIN products p ON p.id = ri.product_id
+        WHERE p.owner_id = ?
+          AND UPPER(r.status) <> 'CANCELLED'
+          AND ri.start_date <= ?
+          AND ri.end_date >= ?
+        """,
+                Integer.class,
+                owner.getId(),
+                java.sql.Date.valueOf(monthEnd),
+                java.sql.Date.valueOf(monthStart)
+        );
+
+       java.math.BigDecimal expectedRevenue =
+                jdbcTemplate.queryForObject("""
+            SELECT COALESCE(SUM(ri.subtotal), 0)
+            FROM rental_items ri
+            JOIN rentals r ON r.id = ri.rental_id
+            JOIN products p ON p.id = ri.product_id
+            WHERE p.owner_id = ?
+              AND UPPER(r.status) NOT IN ('CANCELLED', 'REJECTED')
+              AND ri.start_date <= ?
+              AND ri.end_date >= ?
+            """,
+                        java.math.BigDecimal.class,
+                        owner.getId(),
+                        java.sql.Date.valueOf(monthEnd),
+                        java.sql.Date.valueOf(monthStart)
+                );
+
+        // Lấy các đơn thuê giao với tháng, theo từng thiết bị.
+        String calendarSql = """
+        SELECT
+            r.id AS rental_id,
+            r.rental_code,
+            p.id AS product_id,
+            p.name AS product_name,
+            MIN(ri.start_date) AS start_date,
+            MAX(ri.end_date) AS end_date,
+            UPPER(r.status) AS status
+        FROM rentals r
+        JOIN rental_items ri ON ri.rental_id = r.id
+        JOIN products p ON p.id = ri.product_id
+        WHERE p.owner_id = ?
+          AND UPPER(r.status) NOT IN ('CANCELLED', 'REJECTED')
+          AND ri.start_date <= ?
+          AND ri.end_date >= ?
+        GROUP BY
+            r.id, r.rental_code, p.id, p.name, r.status
+        ORDER BY MIN(ri.start_date), r.id
+        """;
+
+        List<Map<String, Object>> calendarEvents =
+                jdbcTemplate.query(calendarSql, (rs, rowNum) -> {
+                            Map<String, Object> event = new LinkedHashMap<>();
+
+                            event.put(
+                                    "id",
+                                    "rental-" + rs.getLong("rental_id")
+                                            + "-" + rs.getLong("product_id")
+                            );
+                            event.put("code", rs.getString("rental_code"));
+                            event.put("productName", rs.getString("product_name"));
+                            event.put("startDate",
+                                    rs.getDate("start_date").toLocalDate().toString());
+                            event.put("endDate",
+                                    rs.getDate("end_date").toLocalDate().toString());
+                            event.put("status", rs.getString("status"));
+
+                            return event;
+                        },
+                        owner.getId(),
+                        java.sql.Date.valueOf(monthEnd),
+                        java.sql.Date.valueOf(monthStart)
+                );
+
+        String recentOrdersSql = """
+        SELECT
+            r.id,
+            r.rental_code,
+            u.full_name AS customer,
+            STRING_AGG(
+                DISTINCT p.name,
+                ' | ' ORDER BY p.name
+            ) AS device,
+            MIN(ri.start_date) AS start_date,
+            UPPER(r.status) AS status,
+            r.created_at
+        FROM rentals r
+        JOIN users u ON u.id = r.renter_id
+        JOIN rental_items ri ON ri.rental_id = r.id
+        JOIN products p ON p.id = ri.product_id
+        WHERE p.owner_id = ?
+        GROUP BY
+            r.id, r.rental_code, u.full_name, r.status, r.created_at
+        ORDER BY r.created_at DESC NULLS LAST, r.id DESC
+        LIMIT 4
+        """;
+
+        List<Map<String, Object>> recentOrders =
+                jdbcTemplate.query(recentOrdersSql, (rs, rowNum) -> {
+                    Map<String, Object> order = new LinkedHashMap<>();
+
+                    order.put("id", rs.getLong("id"));
+                    order.put("code", rs.getString("rental_code"));
+                    order.put("customer", rs.getString("customer"));
+                    order.put("device", rs.getString("device"));
+                    order.put("status", rs.getString("status"));
+
+                    java.sql.Date startDate = rs.getDate("start_date");
+                    order.put(
+                            "startDate",
+                            startDate == null ? null : startDate.toLocalDate().toString()
+                    );
+
+                    return order;
+                }, owner.getId());
+
+        // Lịch bảo trì sắp tới.
+        List<Map<String, Object>> maintenanceEvents =
+                jdbcTemplate.query("""
+            SELECT
+                m.id,
+                m.title,
+                m.start_date,
+                m.end_date,
+                m.status,
+                p.name AS product_name
+            FROM owner_maintenance_events m
+            JOIN products p ON p.id = m.product_id
+            WHERE m.owner_id = ?
+              AND m.end_date >= CURRENT_DATE
+              AND UPPER(m.status) = 'SCHEDULED'
+            ORDER BY m.start_date, m.id
+            LIMIT 10
+            """,
+                        (rs, rowNum) -> {
+                            Map<String, Object> event = new LinkedHashMap<>();
+
+                            event.put("id", rs.getLong("id"));
+                            event.put("title", rs.getString("title"));
+                            event.put("productName", rs.getString("product_name"));
+                            event.put(
+                                    "startDate",
+                                    rs.getDate("start_date").toLocalDate().toString()
+                            );
+                            event.put(
+                                    "endDate",
+                                    rs.getDate("end_date").toLocalDate().toString()
+                            );
+                            event.put("status", rs.getString("status"));
+
+                            return event;
+                        },
+                        owner.getId()
+                );
+        // Thêm lịch bảo trì vào danh sách sự kiện của calendar.
+        for (Map<String, Object> maintenance : maintenanceEvents) {
+            Map<String, Object> calendarMaintenance = new LinkedHashMap<>();
+
+            calendarMaintenance.put(
+                    "id",
+                    "maintenance-" + maintenance.get("id")
+            );
+            calendarMaintenance.put("title", maintenance.get("title"));
+            calendarMaintenance.put(
+                    "productName",
+                    maintenance.get("productName")
+            );
+            calendarMaintenance.put(
+                    "startDate",
+                    maintenance.get("startDate")
+            );
+            calendarMaintenance.put(
+                    "endDate",
+                    maintenance.get("endDate")
+            );
+            calendarMaintenance.put("status", "MAINTENANCE");
+
+            calendarEvents.add(calendarMaintenance);
+        }
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("ordersThisMonth",
+                ordersThisMonth == null ? 0 : ordersThisMonth);
+        stats.put("activeProducts",
+                activeProducts == null ? 0 : activeProducts);
+        stats.put("totalProducts",
+                totalProducts == null ? 0 : totalProducts);
+        stats.put("expectedRevenue",
+                expectedRevenue == null
+                        ? java.math.BigDecimal.ZERO
+                        : expectedRevenue);
+
+        stats.put("onTimeRate", null);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("month", month.toString());
+        result.put("stats", stats);
+        result.put("calendarEvents", calendarEvents);
+        result.put("recentOrders", recentOrders);
+        result.put("maintenanceEvents", maintenanceEvents);
+
+        return result;
+    }
+
+
+
 
 }

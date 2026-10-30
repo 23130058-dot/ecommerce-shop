@@ -1,28 +1,71 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { products, categories } from '../../data/products'
+import {
+    getOwnerScheduleSettings,
+    saveOwnerScheduleSettings,
+} from '../../services/ownerApi'
 
 export default function ScheduleSettings() {
-    const [selectedProduct, setSelectedProduct] = useState(products[0])
 
-    const [price, setPrice] = useState(products[0]?.price || 0)
+    const [selectedProduct, setSelectedProduct] = useState(
+        products[0] ?? null
+    )
+
+    const [price, setPrice] = useState(products[0]?.price ?? 0)
 
     const [weekendPrice, setWeekendPrice] = useState(
-        Math.round((products[0]?.price || 0) * 1.2)
+        Math.round((products[0]?.price ?? 0) * 1.2)
     )
 
     const [deposit, setDeposit] = useState(
-        (products[0]?.price || 0) * 3
+        (products[0]?.price ?? 0) * 3
     )
 
-    const [blockedDates, setBlockedDates] = useState([
-        '2026-10-10',
-        '2026-10-20',
-    ])
-
+    const [blockedDates, setBlockedDates] = useState([])
     const [newBlockedDate, setNewBlockedDate] = useState('')
-
     const [available, setAvailable] = useState(true)
+
+    const [loading, setLoading] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState('')
+    useEffect(() => {
+        if (!selectedProduct?.id) return
+
+        const controller = new AbortController()
+
+        async function loadSettings() {
+            try {
+                setLoading(true)
+                setError('')
+
+                const data = await getOwnerScheduleSettings(
+                    selectedProduct.id,
+                    { signal: controller.signal }
+                )
+
+                setPrice(data.price ?? selectedProduct.price ?? 0)
+                setWeekendPrice(data.weekendPrice ?? 0)
+                setDeposit(data.deposit ?? 0)
+                setAvailable(data.available ?? true)
+                setBlockedDates(data.blockedDates ?? [])
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    setError(
+                        err.message || 'Không thể tải thiết lập lịch.'
+                    )
+                }
+            } finally {
+                if (!controller.signal.aborted) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        loadSettings()
+
+        return () => controller.abort()
+    }, [selectedProduct?.id])
 
     const handleProductChange = (e) => {
         const product = products.find(
@@ -66,19 +109,43 @@ export default function ScheduleSettings() {
         )
     }
 
-    const handleSave = () => {
-        const data = {
-            product: selectedProduct.name,
-            price,
-            weekendPrice,
-            deposit,
-            available,
-            blockedDates,
+    const handleSave = async () => {
+        if (!selectedProduct?.id) {
+            alert('Vui lòng chọn thiết bị hợp lệ.')
+            return
         }
 
-        console.log('Schedule settings:', data)
+        if (
+            !Number.isFinite(Number(price)) ||
+            Number(price) <= 0 ||
+            !Number.isFinite(Number(weekendPrice)) ||
+            Number(weekendPrice) <= 0 ||
+            !Number.isFinite(Number(deposit)) ||
+            Number(deposit) < 0
+        ) {
+            alert('Giá thuê phải lớn hơn 0 và tiền cọc không được âm.')
+            return
+        }
 
-        alert('Đã lưu thiết lập lịch và giá!')
+        try {
+            setSaving(true)
+            setError('')
+
+            await saveOwnerScheduleSettings(selectedProduct.id, {
+                price: Number(price),
+                weekendPrice: Number(weekendPrice),
+                deposit: Number(deposit),
+                available,
+                blockedDates,
+            })
+
+            alert('Đã lưu thiết lập lịch và giá thành công!')
+        } catch (err) {
+            setError(err.message || 'Không thể lưu thiết lập.')
+            alert(err.message || 'Lưu thiết lập thất bại.')
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
@@ -505,6 +572,11 @@ export default function ScheduleSettings() {
 
             {/* Bottom */}
             <div className="mt-6 flex justify-end gap-3">
+                {error && (
+                    <p className="mb-4 text-sm text-red-500">
+                        {error}
+                    </p>
+                )}
 
                 <Link
                     to="/owner/equipment"
@@ -516,9 +588,10 @@ export default function ScheduleSettings() {
                 <button
                     type="button"
                     onClick={handleSave}
-                    className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e]"
+                    disabled={saving || loading}
+                    className="rounded-lg bg-[#F45116] px-6 py-3 text-sm font-medium text-white hover:bg-[#d9430e] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Lưu thiết lập
+                    {saving ? 'Đang lưu...' : 'Lưu thiết lập'}
                 </button>
 
             </div>

@@ -7,11 +7,22 @@ import com.example.ecommerceshop.owner.OwnerDtos.RentalResponse;
 import com.example.ecommerceshop.owner.OwnerDtos.RevenueResponse;
 import com.example.ecommerceshop.owner.OwnerDtos.ProfileResponse;
 import com.example.ecommerceshop.owner.OwnerDtos.UpdateProfileRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
+import java.util.Map;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -102,5 +113,24 @@ public class OwnerController {
             @RequestBody UpdateProfileRequest request
     ) {
         return ownerService.updateProfile(jwt, request);
+    }
+
+    @GetMapping("/schedule-overview")
+    public Map<String, Object> getScheduleOverview(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam String month
+    ) {
+        final YearMonth yearMonth;
+
+        try {
+            yearMonth = YearMonth.parse(month);
+        } catch (DateTimeParseException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tháng không hợp lệ. Định dạng yêu cầu: YYYY-MM."
+            );
+        }
+
+        return ownerService.getScheduleOverview(jwt, yearMonth);
     }
 }

@@ -4,6 +4,11 @@ export const ownerDashboardData = {
     pendingRequests: 3,
     averageRating: 4.9,
 
+    revenueNote: "Doanh thu từ các đơn thuê",
+    completedRentalsNote: "Tổng số đơn đã hoàn tất",
+    pendingRequestsNote: "Đơn đang chờ xác nhận",
+    ratingNote: "Đánh giá trung bình từ khách hàng",
+
     revenueChart: [
         {
             year: 2026,
@@ -145,3 +150,37 @@ export const normalizeOwnerProduct = (product) => ({
     imageUrl: product.imageUrl ?? '',
     status: product.status ?? 'ACTIVE',
 });
+
+const API_URL = import.meta.env.VITE_API_URL || ''
+
+export async function getOwnerScheduleSettings(productId, options = {}) {
+    const response = await fetch(
+        `${API_URL}/api/owner/products/${productId}/schedule`,
+        options
+    )
+
+    if (!response.ok) {
+        throw new Error('Không thể tải thiết lập lịch.')
+    }
+
+    return response.json()
+}
+
+export async function saveOwnerScheduleSettings(productId, data) {
+    const response = await fetch(
+        `${API_URL}/api/owner/products/${productId}/schedule`,
+        {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        }
+    )
+
+    if (!response.ok) {
+        throw new Error('Không thể lưu thiết lập lịch.')
+    }
+
+    return response.json()
+}

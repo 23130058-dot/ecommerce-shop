@@ -7,9 +7,19 @@ function formatMoney(value) {
 
 export default function OwnerDashboard() {
     const data = ownerDashboardData
+    const currentYear = new Date().getFullYear()
+    const yearData =
+        data.revenueChart.find((item) => Number(item.year) === currentYear) ??
+        data.revenueChart[0]
+
+    const monthlyRevenue = (yearData?.monthlyRevenue ?? []).map((item) => ({
+        month: `T${item.month}`,
+        value: Number(item.revenue) || 0,
+    }))
 
     const maxRevenue = Math.max(
-        ...data.revenueChart.map((item) => item.value)
+        1,
+        ...monthlyRevenue.map((item) => item.value)
     )
 
     return (
@@ -46,27 +56,35 @@ export default function OwnerDashboard() {
                 <div className="grid grid-cols-4 gap-4">
 
                     <StatCard
+                        key="total-revenue"
                         title="TỔNG DOANH THU THÁNG"
                         value={formatMoney(data.totalRevenue)}
-                        note="↑ +12.5% so với tháng trước"
+                        note={data.revenueNote}
+                        // note="↑ +12.5% so với tháng trước"
                     />
 
                     <StatCard
+                        key="completed-rentals"
                         title="ĐƠN THUÊ HOÀN TẤT"
                         value={data.completedRentals}
-                        note="↑ +8% so với tháng trước"
+                        note={data.completedRentalsNote}
+                        // note="↑ +8% so với tháng trước"
                     />
 
                     <StatCard
+                        key="pending-requests"
                         title="YÊU CẦU CHỜ DUYỆT"
                         value={data.pendingRequests}
-                        note=""
+                        note={data.pendingRequestsNote}
+
                     />
 
                     <StatCard
+                        key="average-rating"
                         title="ĐÁNH GIÁ TRUNG BÌNH"
-                        value={`${data.averageRating}/5.0`}
-                        note=""
+                        // value={`${data.averageRating}/5.0`}
+                        value={data.averageRating}
+                        note={data.ratingNote}
                     />
 
                 </div>
@@ -83,13 +101,13 @@ export default function OwnerDashboard() {
                             </h2>
 
                             <p className="mt-1 text-xs text-gray-400">
-                                Thống kê 6 tháng đầu năm 2024
+                                Thống kê doanh thu năm {yearData?.year ?? currentYear}
                             </p>
                         </div>
 
                         <div className="flex h-[220px] items-end gap-5 border-b border-gray-100 px-3">
 
-                            {data.revenueChart.map((item) => {
+                            {monthlyRevenue.map((item) => {
                                 const height =
                                     (item.value / maxRevenue) * 100
 
@@ -238,7 +256,6 @@ export default function OwnerDashboard() {
                     </div>
 
                     <div className="rounded-xl border border-gray-200 bg-white p-5">
-
                         <div className="mb-4">
                             <h2 className="font-bold text-gray-800">
                                 Lịch sử giao dịch
@@ -249,33 +266,21 @@ export default function OwnerDashboard() {
                             </p>
                         </div>
 
-                        <TransactionRow
-                            type="in"
-                            title="Tiền thuê: Order #LR-2391"
-                            date="Hôm nay, 09:30"
-                            amount="+2,400,000đ"
-                        />
-
-                        <TransactionRow
-                            type="out"
-                            title="Rút tiền về ngân hàng"
-                            date="Hôm qua, 15:45"
-                            amount="-15,000,000đ"
-                        />
-
-                        <TransactionRow
-                            type="in"
-                            title="Tiền thuê: Order #LR-2388"
-                            date="12 Th6, 2024"
-                            amount="+1,200,000đ"
-                        />
-
-                        <TransactionRow
-                            type="in"
-                            title="Tiền thuê: Order #LR-2385"
-                            date="10 Th6, 2024"
-                            amount="+800,000đ"
-                        />
+                        {data.transactions?.length > 0 ? (
+                            data.transactions.map((item) => (
+                                <TransactionRow
+                                    key={item.id}
+                                    type={item.type}
+                                    title={item.title}
+                                    date={item.date}
+                                    amount={formatMoney(item.amount)}
+                                />
+                            ))
+                        ) : (
+                            <p className="py-4 text-center text-xs text-gray-400">
+                                Chưa có giao dịch nào.
+                            </p>
+                        )}
 
                         <Link
                             to="/owner/transactions"
@@ -283,7 +288,6 @@ export default function OwnerDashboard() {
                         >
                             Tải lịch sử giao dịch (.csv)
                         </Link>
-
                     </div>
 
                 </div>

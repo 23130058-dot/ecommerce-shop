@@ -25,7 +25,8 @@ public final class OwnerDtos {
             String status,
             String imageKey,
             List<String> images,
-            List<String> tags
+            List<String> tags,
+            Integer currentlyRentedQuantity
     ) {
     }
 

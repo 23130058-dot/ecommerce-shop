@@ -1,27 +1,68 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useState } from 'react'
 
 export default function DamageReport() {
     const { id } = useParams()
-    const navigate = useNavigate()
+    // const navigate = useNavigate()
 
     const [damageType, setDamageType] = useState('partial')
     const [description, setDescription] = useState('')
     const [damageValue, setDamageValue] = useState('')
     const [files, setFiles] = useState([])
-
     const handleFiles = (e) => {
-        setFiles(Array.from(e.target.files))
+        const selectedFiles = Array.from(e.target.files || [])
+        const allowedTypes = [
+            'image/jpeg',
+            'image/png',
+            'video/mp4',
+        ]
+
+        if (selectedFiles.length > 5) {
+            alert('Bạn chỉ được chọn tối đa 5 tệp.')
+            e.target.value = ''
+            setFiles([])
+            return
+        }
+
+        const invalidFile = selectedFiles.find(
+            (file) => !allowedTypes.includes(file.type)
+        )
+
+        if (invalidFile) {
+            alert('Chỉ chấp nhận file JPG, PNG hoặc MP4.')
+            e.target.value = ''
+            setFiles([])
+            return
+        }
+
+        setFiles(selectedFiles)
     }
 
     const submitReport = () => {
-        if (!description || !damageValue) {
+        const amount = Number(damageValue)
+
+        if (!description.trim() || !damageValue.trim()) {
             alert('Vui lòng nhập mô tả và giá trị thiệt hại.')
             return
         }
 
-        alert('Đã gửi báo cáo cho Admin xử lý.')
-        navigate('/owner/returns')
+        if (!Number.isFinite(amount) || amount <= 0) {
+            alert('Giá trị thiệt hại phải lớn hơn 0.')
+            return
+        }
+
+        if (files.length === 0) {
+            alert('Vui lòng đính kèm ít nhất một tệp bằng chứng.')
+            return
+        }
+
+        if (files.length > 5) {
+            alert('Bạn chỉ được chọn tối đa 5 tệp.')
+            return
+        }
+
+        alert('Dữ liệu hợp lệ. Chức năng gửi báo cáo lên hệ thống chưa được kết nối.')
+
     }
 
     return (
@@ -168,7 +209,7 @@ export default function DamageReport() {
                                 <input
                                     type="file"
                                     multiple
-                                    accept="image/*,video/mp4"
+                                    accept=".jpg,.jpeg,.png,.mp4"
                                     onChange={handleFiles}
                                     className="hidden"
                                 />
