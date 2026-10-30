@@ -4,13 +4,29 @@ export const ownerDashboardData = {
     pendingRequests: 3,
     averageRating: 4.9,
 
+    revenueNote: "Doanh thu từ các đơn thuê",
+    completedRentalsNote: "Tổng số đơn đã hoàn tất",
+    pendingRequestsNote: "Đơn đang chờ xác nhận",
+    ratingNote: "Đánh giá trung bình từ khách hàng",
+
     revenueChart: [
-        { month: 'Tháng 1', value: 4300000 },
-        { month: 'Tháng 2', value: 4500000 },
-        { month: 'Tháng 3', value: 4400000 },
-        { month: 'Tháng 4', value: 5900000 },
-        { month: 'Tháng 5', value: 5700000 },
-        { month: 'Tháng 6', value: 7800000 },
+        {
+            year: 2026,
+            monthlyRevenue: [
+                { month: 1, revenue: 1200000 },
+                { month: 2, revenue: 0 },
+                { month: 3, revenue: 3500000 },
+                { month: 4, revenue: 0 },
+                { month: 5, revenue: 0 },
+                { month: 6, revenue: 0 },
+                { month: 7, revenue: 0 },
+                { month: 8, revenue: 0 },
+                { month: 9, revenue: 0 },
+                { month: 10, revenue: 0 },
+                { month: 11, revenue: 0 },
+                { month: 12, revenue: 0 }
+            ],
+        }
     ],
 
     pendingRentals: [
@@ -81,4 +97,90 @@ export const tenantReview = {
     communication: 5,
     punctuality: 4,
     care: 5,
+}
+
+export const tenantRentalHistory = [];
+
+export const ownerRentalHistory = [];
+
+export const ownerProducts = [];
+
+export const ownerProfile = {
+    id: null,
+    fullName: '',
+    email: '',
+    phone: '',
+    address: '',
+    avatarUrl: '',
+};
+
+
+export const createMonthlyRevenue = (year, revenueRows = []) => {
+    const revenueMap = new Map(
+        revenueRows.map((item) => [
+            Number(item.month),
+            Number(item.revenue) || 0,
+        ])
+    );
+
+    return {
+        year: Number(year),
+        monthlyRevenue: Array.from({ length: 12 }, (_, index) => ({
+            month: index + 1,
+            revenue: revenueMap.get(index + 1) ?? 0,
+        })),
+    };
+};
+
+
+export const emptyOwnerRevenue = (year = new Date().getFullYear()) =>
+    createMonthlyRevenue(year);
+
+
+export const normalizeOwnerProduct = (product) => ({
+    ...product,
+    id: product.id,
+    name: product.name ?? '',
+    brand: product.brand ?? '',
+    categoryName: product.categoryName ?? product.category ?? '',
+    dailyPrice: Number(product.dailyPrice ?? 0),
+    depositAmount: Number(product.depositAmount ?? 0),
+    availableQuantity: Number(product.availableQuantity ?? product.quantity ?? 0),
+    currentlyRentedQuantity: Number(product.currentlyRentedQuantity ?? 0),
+    imageUrl: product.imageUrl ?? '',
+    status: product.status ?? 'ACTIVE',
+});
+
+const API_URL = import.meta.env.VITE_API_URL || ''
+
+export async function getOwnerScheduleSettings(productId, options = {}) {
+    const response = await fetch(
+        `${API_URL}/api/owner/products/${productId}/schedule`,
+        options
+    )
+
+    if (!response.ok) {
+        throw new Error('Không thể tải thiết lập lịch.')
+    }
+
+    return response.json()
+}
+
+export async function saveOwnerScheduleSettings(productId, data) {
+    const response = await fetch(
+        `${API_URL}/api/owner/products/${productId}/schedule`,
+        {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        }
+    )
+
+    if (!response.ok) {
+        throw new Error('Không thể lưu thiết lập lịch.')
+    }
+
+    return response.json()
 }
