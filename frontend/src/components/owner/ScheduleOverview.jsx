@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getOwnerScheduleOverview } from '../../services/ownerApi'
 
@@ -33,12 +33,14 @@ const toDateKey = (date) => {
 
 const parseDate = (value) => {
     if (!value) return null
+
     const date = new Date(`${value}T00:00:00`)
     return Number.isNaN(date.getTime()) ? null : date
 }
 
 const formatDate = (value) => {
     const date = parseDate(value)
+
     return date
         ? date.toLocaleDateString('vi-VN')
         : 'Chưa xác định'
@@ -50,8 +52,10 @@ const getMonthKey = (date) =>
 const getMonday = (date) => {
     const result = new Date(date)
     result.setHours(0, 0, 0, 0)
+
     const weekday = (result.getDay() + 6) % 7
     result.setDate(result.getDate() - weekday)
+
     return result
 }
 
@@ -66,7 +70,7 @@ const getStatusInfo = (status) => {
         }
     }
 
-    if (['PENDING'].includes(normalized)) {
+    if (normalized === 'PENDING') {
         return {
             label: 'CHỜ GIAO',
             className: 'bg-amber-50 text-amber-600',
@@ -74,7 +78,7 @@ const getStatusInfo = (status) => {
         }
     }
 
-    if (['CONFIRMED'].includes(normalized)) {
+    if (normalized === 'CONFIRMED') {
         return {
             label: 'ĐÃ XÁC NHẬN',
             className: 'bg-blue-50 text-blue-600',
@@ -82,7 +86,7 @@ const getStatusInfo = (status) => {
         }
     }
 
-    if (['MAINTENANCE'].includes(normalized)) {
+    if (normalized === 'MAINTENANCE') {
         return {
             label: 'BẢO TRÌ',
             className: 'bg-blue-50 text-blue-600',
@@ -103,26 +107,17 @@ export default function ScheduleOverview() {
     const [currentDate, setCurrentDate] = useState(() => new Date())
     const [viewMode, setViewMode] = useState('month')
     const [selectedDate, setSelectedDate] = useState(() => new Date())
+
     const [data, setData] = useState(null)
     const [searchTerm, setSearchTerm] = useState('')
+
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const [reloadKey, setReloadKey] = useState(0)
 
     const monthKey = getMonthKey(currentDate)
 
-    const loadData = useCallback(async () => {
-        setError('')
-
-        try {
-            const result = await getOwnerScheduleOverview(monthKey)
-            setData(result)
-        } catch (err) {
-            setError(err.message || 'Không thể tải dữ liệu lịch tổng quan.')
-        } finally {
-            setLoading(false)
-        }
-    }, [monthKey])
-
+    // Tải dữ liệu lịch tổng quan từ backend.
     useEffect(() => {
         let cancelled = false
 
@@ -152,14 +147,22 @@ export default function ScheduleOverview() {
         return () => {
             cancelled = true
         }
-    }, [monthKey])
+    }, [monthKey, reloadKey])
+
+    const handleReload = () => {
+        setLoading(true)
+        setError('')
+        setReloadKey((previous) => previous + 1)
+    }
 
     const events = data?.calendarEvents || []
     const orders = data?.recentOrders || []
     const stats = data?.stats || {}
 
+    // Tìm kiếm đơn đặt gần đây.
     const filteredOrders = useMemo(() => {
         const keyword = searchTerm.trim().toLocaleLowerCase('vi-VN')
+
         if (!keyword) return orders
 
         return orders.filter((order) =>
@@ -176,6 +179,7 @@ export default function ScheduleOverview() {
         )
     }, [orders, searchTerm])
 
+    // Tạo danh sách ngày hiển thị trên lịch.
     const calendarDays = useMemo(() => {
         if (viewMode === 'day') {
             return [new Date(selectedDate)]
@@ -196,6 +200,7 @@ export default function ScheduleOverview() {
             currentDate.getMonth(),
             1
         )
+
         const start = getMonday(firstDay)
 
         // Luôn hiển thị 6 hàng để lịch không nhảy kích thước giữa các tháng.
@@ -243,6 +248,7 @@ export default function ScheduleOverview() {
                     <h1 className="text-2xl font-semibold text-gray-800">
                         Lịch tổng quan
                     </h1>
+
                     <p className="mt-1 text-sm text-gray-400">
                         Theo dõi và quản lý lịch thiết bị của bạn tập trung.
                     </p>
@@ -260,9 +266,10 @@ export default function ScheduleOverview() {
             {error && (
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                     <span>{error}</span>
+
                     <button
                         type="button"
-                        onClick={loadData}
+                        onClick={handleReload}
                         className="font-medium underline"
                     >
                         Thử tải lại
@@ -327,6 +334,8 @@ export default function ScheduleOverview() {
                     onViewChange={setViewMode}
                     onSelectDate={setSelectedDate}
                     onMonthChange={(value) => {
+                        if (!value) return
+
                         const [year, month] = value.split('-').map(Number)
                         setCurrentDate(new Date(year, month - 1, 1))
                     }}
@@ -359,9 +368,11 @@ function StatCard({ title, value, description, icon }) {
                     <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
                         {title}
                     </p>
+
                     <p className="mt-2 text-2xl font-semibold text-gray-800">
                         {value}
                     </p>
+
                     <p className="mt-1 text-[11px] text-gray-400">
                         {description}
                     </p>
@@ -415,6 +426,7 @@ function CalendarSection({
                         onClick={onPrevious}
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
                     >
+                        ‹
                     </button>
 
                     <h2 className="min-w-[130px] text-center text-sm font-semibold capitalize text-gray-800">
@@ -493,8 +505,10 @@ function CalendarSection({
                     {calendarDays.map((date) => {
                         const key = toDateKey(date)
                         const dayEvents = visibleEvents(date)
+
                         const isOutsideMonth =
                             viewMode === 'month' && !sameMonth(date)
+
                         const isSelected = key === selectedKey
                         const isToday = key === todayKey
 
@@ -508,7 +522,11 @@ function CalendarSection({
                                     isOutsideMonth
                                         ? 'bg-gray-50/60'
                                         : 'bg-white'
-                                } ${isSelected ? 'ring-2 ring-inset ring-[#F45116]' : ''}`}
+                                } ${
+                                    isSelected
+                                        ? 'ring-2 ring-inset ring-[#F45116]'
+                                        : ''
+                                }`}
                             >
                                 <span
                                     className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] ${
@@ -550,9 +568,18 @@ function CalendarSection({
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <Legend color="bg-emerald-400" label="Đang cho thuê / Đã xác nhận" />
+                <Legend
+                    color="bg-emerald-400"
+                    label="Đang cho thuê / Đã xác nhận"
+                />
+
                 <Legend color="bg-amber-400" label="Chờ xử lý" />
-                <Legend color="bg-blue-500" label="Bảo trì / Lịch bận" />
+
+                <Legend
+                    color="bg-blue-500"
+                    label="Bảo trì / Lịch bận"
+                />
+
                 <Legend color="bg-gray-300" label="Ngày thường" />
             </div>
 
@@ -560,6 +587,7 @@ function CalendarSection({
                 <p className="text-xs font-semibold text-gray-700">
                     Lịch ngày {formatDate(selectedKey)}
                 </p>
+
                 {visibleEvents(selectedDate).length === 0 ? (
                     <p className="mt-1 text-[11px] text-gray-400">
                         Không có đơn thuê hoặc lịch bảo trì trong ngày này.
@@ -575,8 +603,10 @@ function CalendarSection({
                                     {event.code ? `${event.code} · ` : ''}
                                     {event.productName || event.title}
                                 </span>
+
                                 <span className="text-gray-400">
-                                    {formatDate(event.startDate)} – {formatDate(event.endDate)}
+                                    {formatDate(event.startDate)} –{' '}
+                                    {formatDate(event.endDate)}
                                 </span>
                             </div>
                         ))}
@@ -596,7 +626,13 @@ function Legend({ color, label }) {
     )
 }
 
-function RecentOrders({ orders, searchTerm, onSearch, loading, onViewAll }) {
+function RecentOrders({
+                          orders,
+                          searchTerm,
+                          onSearch,
+                          loading,
+                          onViewAll,
+                      }) {
     return (
         <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
@@ -611,6 +647,7 @@ function RecentOrders({ orders, searchTerm, onSearch, loading, onViewAll }) {
 
             <div className="mb-3 flex h-9 items-center rounded-lg bg-gray-50 px-3">
                 <span className="mr-2 text-gray-400">⌕</span>
+
                 <input
                     type="text"
                     value={searchTerm}
@@ -643,9 +680,11 @@ function RecentOrders({ orders, searchTerm, onSearch, loading, onViewAll }) {
                                         <p className="text-[11px] font-semibold text-gray-700">
                                             {order.customer || 'Khách thuê'}
                                         </p>
+
                                         <p className="mt-1 truncate text-[9px] text-gray-400">
                                             {order.device || 'Thiết bị'}
                                         </p>
+
                                         <p className="mt-1 text-[9px] text-gray-400">
                                             {order.code || ''}
                                             {order.startDate
@@ -691,16 +730,14 @@ function MaintenanceReminder({ event, onOpen }) {
             </div>
 
             {event ? (
-                <>
-                    <p className="mt-3 text-[10px] leading-5 text-gray-500">
-                        {event.productName || 'Thiết bị'}
-                        {' — '}
-                        {event.title || 'Lịch bảo trì'}
-                        {event.startDate
-                            ? `, ngày ${formatDate(event.startDate)}`
-                            : ''}
-                    </p>
-                </>
+                <p className="mt-3 text-[10px] leading-5 text-gray-500">
+                    {event.productName || 'Thiết bị'}
+                    {' — '}
+                    {event.title || 'Lịch bảo trì'}
+                    {event.startDate
+                        ? `, ngày ${formatDate(event.startDate)}`
+                        : ''}
+                </p>
             ) : (
                 <p className="mt-3 text-[10px] leading-5 text-gray-500">
                     Chưa có lịch bảo trì sắp tới được ghi nhận trong hệ thống.
