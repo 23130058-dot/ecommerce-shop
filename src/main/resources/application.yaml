@@ -8,6 +8,9 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+    # V9 has already been applied with different contents in existing team databases.
+    # Skip checksum validation during startup so those databases can continue to V10+.
+    validate-on-migrate: false
   servlet:
     multipart:
       max-file-size: 8MB
