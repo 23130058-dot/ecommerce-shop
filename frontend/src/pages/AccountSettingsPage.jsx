@@ -3,7 +3,8 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import avatar from '../assets/lensrent/avatar.png'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
-import { changeAccountPassword, confirmPhoneVerificationCode, getAccountProfile, getAccountVerification, getAccountWallet, getNotificationPreferences, requestPhoneVerificationCode, topUpAccountWallet, updateAccountProfile, updateNotificationPreferences, uploadAccountAvatar, uploadAccountVerificationDocument, withdrawAccountWallet } from '../services/accountApi.js'
+import WalletPanel from '../components/wallet/WalletPanel.jsx'
+import { changeAccountPassword, confirmPhoneVerificationCode, getAccountProfile, getAccountVerification, getNotificationPreferences, requestPhoneVerificationCode, updateAccountProfile, updateNotificationPreferences, uploadAccountAvatar, uploadAccountVerificationDocument } from '../services/accountApi.js'
 import { API_BASE_URL, getStoredAuth, updateStoredUser } from '../services/authApi.js'
 import { getWorkspacePreference, saveWorkspacePreference } from '../services/workspacePreference.js'
 
@@ -450,91 +451,7 @@ function SettingRow({ icon, title, description, trailing }) {
 }
 
 function PaymentsTab({ notify }) {
-  const [wallet, setWallet] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [reloadCounter, setReloadCounter] = useState(0)
-  const [busy, setBusy] = useState('')
-  const [topUpAmount, setTopUpAmount] = useState('500000')
-  const [topUpResult, setTopUpResult] = useState('SUCCESS')
-  const [withdrawAmount, setWithdrawAmount] = useState('100000')
-  const [withdrawResult, setWithdrawResult] = useState('SUCCESS')
-
-  useEffect(() => {
-    let active = true
-    getAccountWallet().then((data) => { if (active) { setWallet(data); setLoadError('') } })
-      .catch((error) => { if (active) { setLoadError(error.message); notify(error.message) } })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [reloadCounter])
-
-  const runWalletAction = async (action, amount, simulatedResult) => {
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value < 10000 || value > 50000000) {
-      notify('Số tiền phải từ 10.000đ đến 50.000.000đ.', 'error')
-      return
-    }
-    setBusy(action)
-    try {
-      const result = action === 'topup'
-        ? await topUpAccountWallet({ amount: value, simulatedResult })
-        : await withdrawAccountWallet({ amount: value, simulatedResult })
-      setWallet(result)
-      const outcome = result.transactions?.[0]?.status
-      notify(outcome === 'PENDING' ? 'Giao dịch đang chờ xử lý; số dư chưa thay đổi.' : outcome === 'FAILED' ? 'Giao dịch mô phỏng thất bại; số dư được giữ nguyên.' : action === 'topup' ? 'Nạp tiền mô phỏng thành công.' : 'Rút tiền mô phỏng thành công.')
-    } catch (error) {
-      notify(error.message, 'error')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const transactionLabels = {
-    TOP_UP: 'Nạp tiền', WITHDRAWAL: 'Rút tiền', OWNER_EARNING: 'Thu nhập cho thuê', RENTAL_PAYMENT: 'Thanh toán thuê',
-    RENTAL_REFUND: 'Hoàn tiền đơn thuê', DEPOSIT_HOLD: 'Giữ tiền cọc',
-    DEPOSIT_RELEASE: 'Hoàn tiền cọc', DEPOSIT_DEDUCTION: 'Khấu trừ tiền cọc',
-  }
-  const moneyText = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
-
-  if (!loading && !wallet) return <SectionCard title="Không tải được ví LensRent"><p className="text-sm text-red-700">{loadError || 'Không thể lấy số dư ví.'}</p><button className="mt-4 rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-semibold text-white" onClick={() => { setLoading(true); setReloadCounter((value) => value + 1) }} type="button">Thử lại</button></SectionCard>
-
-  return <div className="space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="rounded-xl bg-slate-900 p-5 text-white"><p className="text-xs font-semibold text-white/65">Số dư khả dụng</p><p className="mt-2 text-2xl font-extrabold">{loading ? '…' : moneyText(wallet?.availableBalance)}</p><p className="mt-1 text-xs text-white/55">Dùng để thanh toán đơn thuê hoặc rút mô phỏng.</p></div>
-      <div className="rounded-xl border border-orange-100 bg-orange-50 p-5"><p className="text-xs font-semibold text-orange-800">Tiền cọc đang giữ</p><p className="mt-2 text-2xl font-extrabold text-orange-700">{loading ? '…' : moneyText(wallet?.heldBalance)}</p><p className="mt-1 text-xs text-orange-800/70">Được mở khóa khi thiết bị được xác nhận trả.</p></div>
-      <div className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold text-slate-500">Đã nạp thành công</p><p className="mt-2 text-2xl font-extrabold text-slate-900">{loading ? '…' : moneyText(wallet?.totalTopUps)}</p><p className="mt-1 text-xs text-slate-500">Tổng giao dịch nạp đã hoàn tất.</p></div>
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-5"><p className="text-xs font-semibold text-emerald-800">Thu nhập Owner</p><p className="mt-2 text-2xl font-extrabold text-emerald-700">{loading ? '…' : moneyText(wallet?.totalOwnerEarnings)}</p><p className="mt-1 text-xs text-emerald-800/70">Thu nhập từ các đơn đã thanh toán và hoàn tất.</p></div>
-    </div>
-
-    <div className="grid items-start gap-5 xl:grid-cols-2">
-      <SectionCard title="Nạp ví mô phỏng" description="Chọn kết quả giả lập để kiểm tra luồng ví; không phát sinh giao dịch tiền thật.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Số tiền nạp<input className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10" max="50000000" min="10000" onChange={(event) => setTopUpAmount(event.target.value)} step="10000" type="number" value={topUpAmount} /></label>
-          <label className="block text-sm font-medium text-slate-700">Kết quả giả lập<select className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-orange-500" onChange={(event) => setTopUpResult(event.target.value)} value={topUpResult}><option value="SUCCESS">Thành công</option><option value="PENDING">Đang chờ</option><option value="FAILED">Thất bại</option></select></label>
-        </div>
-        <button className="mt-4 w-full rounded-lg bg-[#ff5500] px-4 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-60" disabled={Boolean(busy) || loading} onClick={() => runWalletAction('topup', topUpAmount, topUpResult)} type="button">{busy === 'topup' ? 'Đang ghi nhận…' : 'Thực hiện nạp thử'}</button>
-        <p className="mt-3 text-xs leading-5 text-slate-500">Chỉ giao dịch “Thành công” mới cộng số dư. “Đang chờ” và “Thất bại” được lưu lịch sử nhưng không cộng tiền.</p>
-      </SectionCard>
-
-      <SectionCard title="Rút tiền mô phỏng" description="Kiểm tra kết quả thành công hoặc thất bại. Đồ án chưa kết nối ngân hàng thật.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Số tiền rút<input className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10" max="50000000" min="10000" onChange={(event) => setWithdrawAmount(event.target.value)} step="10000" type="number" value={withdrawAmount} /></label>
-          <label className="block text-sm font-medium text-slate-700">Kết quả giả lập<select className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-orange-500" onChange={(event) => setWithdrawResult(event.target.value)} value={withdrawResult}><option value="SUCCESS">Thành công</option><option value="FAILED">Thất bại</option></select></label>
-        </div>
-        <button className="mt-4 w-full rounded-lg border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60" disabled={Boolean(busy) || loading} onClick={() => runWalletAction('withdraw', withdrawAmount, withdrawResult)} type="button">{busy === 'withdraw' ? 'Đang ghi nhận…' : 'Thực hiện rút thử'}</button>
-        <p className="mt-3 text-xs leading-5 text-slate-500">Rút thành công cần đủ số dư khả dụng. Tiền cọc đang giữ không thể rút.</p>
-      </SectionCard>
-    </div>
-
-    <SectionCard title="Lịch sử giao dịch ví" description="Các giao dịch gần đây được lưu trong cơ sở dữ liệu.">
-      {loading ? <p className="py-6 text-center text-sm text-slate-500">Đang tải lịch sử ví…</p> : !wallet?.transactions?.length ? <p className="rounded-lg bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">Chưa có giao dịch. Hãy nạp thử để bắt đầu.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead><tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400"><th className="py-3 pr-4">Giao dịch</th><th className="py-3 pr-4">Thời gian</th><th className="py-3 pr-4">Trạng thái</th><th className="py-3 text-right">Số tiền</th></tr></thead><tbody>{wallet.transactions.map((transaction) => {
-        const incoming = ['TOP_UP', 'OWNER_EARNING', 'RENTAL_REFUND', 'DEPOSIT_RELEASE'].includes(transaction.type)
-        const statusLabel = transaction.status === 'COMPLETED' ? 'Thành công' : transaction.status === 'PENDING' ? 'Đang chờ' : 'Thất bại'
-        return <tr className="border-b border-slate-50 last:border-0" key={transaction.id}><td className="py-3 pr-4"><p className="font-semibold text-slate-800">{transactionLabels[transaction.type] || transaction.type}</p><p className="mt-0.5 text-xs text-slate-500">{transaction.description}</p></td><td className="py-3 pr-4 text-xs text-slate-500">{transaction.createdAt ? new Date(transaction.createdAt).toLocaleString('vi-VN') : '—'}</td><td className="py-3 pr-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${transaction.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : transaction.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{statusLabel}</span></td><td className={`py-3 text-right font-bold ${incoming ? 'text-emerald-700' : 'text-slate-800'}`}>{incoming ? '+' : '-'}{moneyText(transaction.amount)}</td></tr>
-      })}</tbody></table></div>}
-    </SectionCard>
-    <p className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">Ví LensRent hiện là ví nội bộ mô phỏng cho đồ án. Muốn thu hoặc chuyển tiền thật cần tích hợp cổng thanh toán/ngân hàng, xác minh chữ ký webhook và chỉ ghi nhận giao dịch sau khi đối tác xác nhận.</p>
-  </div>
+  return <WalletPanel notify={notify} />
 }
 
 const defaultNotificationPreferences = {

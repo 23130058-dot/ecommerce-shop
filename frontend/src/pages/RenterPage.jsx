@@ -3,7 +3,7 @@ import { Link, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Header from '../components/layout/Header.jsx'
 import DataTable from '../components/shared/DataTable.jsx'
-import { getAccountWallet, topUpAccountWallet, withdrawAccountWallet } from '../services/accountApi.js'
+import WalletPanel from '../components/wallet/WalletPanel.jsx'
 import { getStoredAuth } from '../services/authApi.js'
 import { addToCart, clearWishlist, getCurrentRentalItems, getRenterDashboard, getRenterNotifications, getWishlist, markRenterNotificationsRead, removeFromWishlist } from '../services/shoppingApi.js'
 import { showToast } from '../services/toast.js'
@@ -128,52 +128,7 @@ function NotificationsPanel() {
 }
 
 function RenterWalletPanel() {
-  const [wallet, setWallet] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
-  const [amount, setAmount] = useState('500000')
-  const [result, setResult] = useState('SUCCESS')
-  const load = () => getAccountWallet().then(setWallet).catch((requestError) => setError(requestError.message)).finally(() => setLoading(false))
-  useEffect(() => { load() }, [])
-  const act = async (type) => {
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value < 10000 || value > 50000000) { showToast('Số tiền phải từ 10.000đ đến 50.000.000đ.', 'warning'); return }
-    setBusy(type); setError('')
-    try {
-      const updated = type === 'topup'
-        ? await topUpAccountWallet({ amount: value, simulatedResult: result })
-        : await withdrawAccountWallet({ amount: value, simulatedResult: result === 'PENDING' ? 'SUCCESS' : result })
-      setWallet(updated)
-      const transaction = updated.transactions?.[0]
-      showToast(transaction?.status === 'PENDING' ? 'Giao dịch đang chờ; số dư chưa thay đổi.' : transaction?.status === 'FAILED' ? 'Giao dịch thất bại; số dư được giữ nguyên.' : type === 'topup' ? 'Nạp ví mô phỏng thành công.' : 'Rút ví mô phỏng thành công.', transaction?.status === 'FAILED' ? 'warning' : 'success')
-    } catch (requestError) { setError(requestError.message); showToast(requestError.message, 'error') }
-    finally { setBusy('') }
-  }
-  const moneyLabel = (value) => money(value)
-  const transactionNames = { TOP_UP: 'Nạp tiền', WITHDRAWAL: 'Rút tiền', OWNER_EARNING: 'Thu nhập cho thuê', RENTAL_PAYMENT: 'Thanh toán thuê', RENTAL_REFUND: 'Hoàn tiền đơn thuê', DEPOSIT_HOLD: 'Giữ tiền cọc', DEPOSIT_RELEASE: 'Hoàn tiền cọc', DEPOSIT_DEDUCTION: 'Khấu trừ tiền cọc' }
-  return <div className="space-y-4">
-    {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-xl bg-slate-900 p-4 text-white"><p className="text-xs font-semibold text-white/65">Số dư khả dụng</p><p className="mt-2 text-2xl font-extrabold">{loading ? '…' : moneyLabel(wallet?.availableBalance)}</p></article>
-      <article className="rounded-xl border border-orange-100 bg-orange-50 p-4"><p className="text-xs font-semibold text-orange-800">Tiền cọc đang giữ</p><p className="mt-2 text-2xl font-extrabold text-orange-700">{loading ? '…' : moneyLabel(wallet?.heldBalance)}</p></article>
-      <article className="rounded-xl border border-emerald-100 bg-emerald-50 p-4"><p className="text-xs font-semibold text-emerald-800">Thu nhập Owner</p><p className="mt-2 text-2xl font-extrabold text-emerald-700">{loading ? '…' : moneyLabel(wallet?.totalOwnerEarnings)}</p></article>
-      <article className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-500">Rút đang chờ</p><p className="mt-2 text-2xl font-extrabold text-gray-900">{loading ? '…' : moneyLabel(wallet?.pendingWithdrawals)}</p></article>
-    </div>
-    <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-      <div className="mb-4"><h2 className="font-bold">Nạp và rút tiền mô phỏng</h2><p className="mt-1 text-xs leading-5 text-gray-500">Ví dùng chung với Cài đặt tài khoản và workspace Owner. Không kết nối ngân hàng thật.</p></div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px_auto_auto]">
-        <label className="text-xs font-semibold text-gray-600">Số tiền<input className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 px-3 text-sm font-normal" max="50000000" min="10000" onChange={(event) => setAmount(event.target.value)} step="10000" type="number" value={amount} /></label>
-        <label className="text-xs font-semibold text-gray-600">Kết quả giả lập<select className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal" onChange={(event) => setResult(event.target.value)} value={result}><option value="SUCCESS">Thành công</option><option value="PENDING">Đang chờ</option><option value="FAILED">Thất bại</option></select></label>
-        <button className="self-end rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50" disabled={Boolean(busy) || loading} onClick={() => act('topup')} type="button">{busy === 'topup' ? 'Đang nạp…' : 'Nạp ví'}</button>
-        <button className="self-end rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 disabled:opacity-50" disabled={Boolean(busy) || loading} onClick={() => act('withdraw')} type="button">{busy === 'withdraw' ? 'Đang rút…' : 'Rút mô phỏng'}</button>
-      </div>
-    </section>
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="border-b border-gray-100 px-4 py-4"><h2 className="font-bold">Lịch sử giao dịch ví</h2><p className="mt-1 text-xs text-gray-500">Cùng dữ liệu đang hiển thị trong Cài đặt tài khoản.</p></div>
-      {loading ? <p className="p-8 text-center text-sm text-gray-500">Đang tải giao dịch…</p> : wallet?.transactions?.length ? <div className="divide-y divide-gray-100">{wallet.transactions.map((transaction) => <div className="flex flex-wrap items-center gap-3 px-4 py-3" key={transaction.id}><span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${['TOP_UP','OWNER_EARNING','RENTAL_REFUND','DEPOSIT_RELEASE'].includes(transaction.type) ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>{['TOP_UP','OWNER_EARNING','RENTAL_REFUND','DEPOSIT_RELEASE'].includes(transaction.type) ? '↙' : '↗'}</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-gray-800">{transactionNames[transaction.type] || transaction.type}</p><p className="mt-0.5 truncate text-xs text-gray-500">{transaction.description}</p></div><span className={`text-sm font-bold ${['TOP_UP','OWNER_EARNING','RENTAL_REFUND','DEPOSIT_RELEASE'].includes(transaction.type) ? 'text-emerald-700' : 'text-gray-800'}`}>{['TOP_UP','OWNER_EARNING','RENTAL_REFUND','DEPOSIT_RELEASE'].includes(transaction.type) ? '+' : '-'}{moneyLabel(transaction.amount)}</span><span className="w-full text-right text-[11px] text-gray-400 sm:w-auto">{transaction.createdAt ? new Date(transaction.createdAt).toLocaleString('vi-VN') : '—'} · {transaction.status === 'COMPLETED' ? 'Hoàn tất' : transaction.status === 'PENDING' ? 'Chờ xử lý' : 'Thất bại'}</span></div>)}</div> : <p className="p-8 text-center text-sm text-gray-500">Chưa có giao dịch.</p>}
-    </section>
-  </div>
+  return <WalletPanel notify={showToast} />
 }
 
 function RenterWishlistPanel() {

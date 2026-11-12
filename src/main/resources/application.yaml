@@ -19,6 +19,16 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET:lensrent-local-development-secret-key-change-before-deployment}
+  wallet:
+    zalopay:
+      # These are the public Merchant TEST credentials from developer.zalopay.vn/start/.
+      enabled: ${ZALOPAY_ENABLED:true}
+      app-id: ${ZALOPAY_APP_ID:554}
+      key1: ${ZALOPAY_KEY1:8NdU5pG5R2spGHGhyO99HN1OhD8IQJBn}
+      key2: ${ZALOPAY_KEY2:uUfsWgfLkRLzq6W2uNXTCxrfxs51auny}
+      create-order-endpoint: ${ZALOPAY_CREATE_ORDER_ENDPOINT:https://sandbox.zalopay.com.vn/v001/tpe/createorder}
+      query-order-endpoint: ${ZALOPAY_QUERY_ORDER_ENDPOINT:https://sandbox.zalopay.com.vn/v001/tpe/getstatusbyapptransid}
+      redirect-url: ${ZALOPAY_REDIRECT_URL:http://localhost:5173/wallet/top-up-result}
   sms:
     infobip-api-key: 8450782df614d034b0bedf389937ebd1-dc956df7-9067-4462-a1ca-a00d1b3b0a84
     infobip-base-url: eewzz2.api.infobip.com

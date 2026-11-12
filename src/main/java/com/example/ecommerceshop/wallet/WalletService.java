@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Locale;
 
 @Service
 public class WalletService {
@@ -27,59 +26,24 @@ public class WalletService {
     }
 
     @Transactional
-    public WalletOverview requestOwnerWithdrawal(long userId, BigDecimal requestedAmount) {
+    public WalletOverview withdraw(long userId, BigDecimal requestedAmount) {
         lockAccount(userId);
         syncOwnerEarnings(userId);
-        BigDecimal amount=requestedAmount.setScale(2,java.math.RoundingMode.HALF_UP);
+        BigDecimal amount;
+        try {
+            amount=requestedAmount.setScale(0,java.math.RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException error) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Số tiền rút phải là số nguyên đồng.");
+        }
+        if (amount.signum()<=0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Số tiền rút phải lớn hơn 0.");
         AccountBalance before=balance(userId);
         if(before.available().compareTo(amount)<0)
-            throw new ResponseStatusException(HttpStatus.CONFLICT,"Số dư ví khả dụng không đủ cho yêu cầu rút tiền.");
-        Long requestId=jdbc.queryForObject(
-                "INSERT INTO owner_withdrawal_requests(owner_id,amount) VALUES(?,?) RETURNING id",Long.class,userId,amount);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Số dư khả dụng không đủ để rút số tiền này.");
         BigDecimal available=before.available().subtract(amount);
         jdbc.update("UPDATE wallet_accounts SET available_balance=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",available,userId);
-        record(userId,"WITHDRAWAL",amount,"PENDING",available,before.held(),
-                "Yêu cầu rút tiền Owner đang chờ xử lý.","OWNER_WITHDRAWAL",requestId);
-        return readOverview(userId);
-    }
-
-    @Transactional
-    public WalletOverview topUp(long userId,WalletActionRequest request) {
-        lockAccount(userId);
-        syncOwnerEarnings(userId);
-        BigDecimal amount=request.amount().setScale(2,java.math.RoundingMode.HALF_UP);
-        String result=request.simulatedResult().trim().toUpperCase(Locale.ROOT);
-        if(!List.of("SUCCESS","FAILED","PENDING").contains(result))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Kết quả nạp mô phỏng không hợp lệ.");
-        AccountBalance before=balance(userId);
-        BigDecimal available=before.available();
-        String status=result.equals("SUCCESS")?"COMPLETED":result;
-        if("SUCCESS".equals(result)) {
-            available=available.add(amount);
-            jdbc.update("UPDATE wallet_accounts SET available_balance=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",available,userId);
-        }
-        record(userId,"TOP_UP",amount,status,available,before.held(),
-                result.equals("SUCCESS")?"Nạp ví mô phỏng thành công.":result.equals("PENDING")?"Giao dịch nạp đang chờ; số dư chưa được cộng.":"Giao dịch nạp mô phỏng thất bại.",null,null);
-        return readOverview(userId);
-    }
-
-    @Transactional
-    public WalletOverview withdraw(long userId,WithdrawalRequest request) {
-        lockAccount(userId);
-        syncOwnerEarnings(userId);
-        BigDecimal amount=request.amount().setScale(2,java.math.RoundingMode.HALF_UP);
-        String result=request.simulatedResult().trim().toUpperCase(Locale.ROOT);
-        AccountBalance before=balance(userId);
-        if("SUCCESS".equals(result) && before.available().compareTo(amount)<0)
-            throw new ResponseStatusException(HttpStatus.CONFLICT,"Số dư ví khả dụng không đủ để rút.");
-        BigDecimal available=before.available();
-        String status="FAILED".equals(result)?"FAILED":"COMPLETED";
-        if("SUCCESS".equals(result)) {
-            available=available.subtract(amount);
-            jdbc.update("UPDATE wallet_accounts SET available_balance=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",available,userId);
-        }
-        record(userId,"WITHDRAWAL",amount,status,available,before.held(),
-                "FAILED".equals(result)?"Yêu cầu rút ví mô phỏng thất bại; số dư được giữ nguyên.":"Rút tiền mô phỏng thành công; không có giao dịch ngân hàng thật.",null,null);
+        record(userId,"WITHDRAWAL",amount,"COMPLETED",available,before.held(),
+                "Rút tiền từ số dư ví LensRent.","WALLET_WITHDRAWAL",null);
         return readOverview(userId);
     }
 
@@ -246,8 +210,8 @@ public class WalletService {
         BigDecimal ownerEarnings=jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM wallet_transactions WHERE user_id=? AND type='OWNER_EARNING' AND status='COMPLETED'",BigDecimal.class,userId);
         BigDecimal pendingWithdrawals=jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM wallet_transactions WHERE user_id=? AND type='WITHDRAWAL' AND status='PENDING'",BigDecimal.class,userId);
         List<WalletTransaction> transactions=jdbc.query("""
-                SELECT id,type,amount,status,available_after,held_after,description,created_at
-                FROM wallet_transactions WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 50
+                SELECT tx.id,tx.type,tx.amount,tx.status,tx.available_after,tx.held_after,tx.description,tx.created_at
+                FROM wallet_transactions tx WHERE tx.user_id=? ORDER BY tx.created_at DESC,tx.id DESC LIMIT 50
                 """,(rs,n)->new WalletTransaction(rs.getLong("id"),rs.getString("type"),rs.getBigDecimal("amount"),
                 rs.getString("status"),rs.getBigDecimal("available_after"),rs.getBigDecimal("held_after"),
                 rs.getString("description"),local(rs.getTimestamp("created_at"))),userId);

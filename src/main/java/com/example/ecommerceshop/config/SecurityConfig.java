@@ -27,6 +27,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/account/wallet/top-ups/zalopay/callback").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/stores", "/api/stores/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/avatars/**", "/uploads/storefront/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

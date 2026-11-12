@@ -57,7 +57,10 @@ export const confirmOwnerReturn = (rentalItemId) => request(`/returns/${encodeUR
 export const reportOwnerDamage = (rentalItemId, body) => request(`/returns/${encodeURIComponent(rentalItemId)}/damage`, { method: 'POST', body })
 export const getOwnerWallet = (options) => request('/wallet', options)
 export const getOwnerTransactions = (options) => request('/transactions', options)
-export const requestOwnerWithdrawal = (amount) => request('/withdrawals', { method: 'POST', body: { amount: Number(amount) } })
+export const requestOwnerWithdrawal = (withdrawal) => request('/withdrawals', {
+  method: 'POST',
+  body: { ...withdrawal, amount: Number(withdrawal.amount) },
+})
 export const getOwnerReviews = (options) => request('/reviews', options)
 export const submitOwnerReview = (body) => request('/reviews', { method: 'POST', body })
 export const getOwnerChats = (options) => request('/chats', options)

@@ -130,7 +130,7 @@ public final class OwnerDtos {
                                       BigDecimal amount, String status, LocalDateTime createdAt) {}
 
     public record WithdrawalRequest(
-            @NotNull @DecimalMin("10000.0") @DecimalMax("50000000.0") BigDecimal amount) {}
+            @NotNull @DecimalMin("1") BigDecimal amount) {}
 
     public record ReviewCandidateResponse(Long rentalId, String rentalCode, Long renterId,
                                           String renterName, String productNames, LocalDate startDate,

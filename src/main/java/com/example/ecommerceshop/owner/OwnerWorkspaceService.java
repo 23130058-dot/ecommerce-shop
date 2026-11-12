@@ -312,7 +312,7 @@ public class OwnerWorkspaceService {
     private List<TransactionResponse> transactionRows(long ownerId, boolean recentOnly) {
         String sql = """
                 SELECT tx.id,
-                       CASE WHEN tx.type='OWNER_EARNING' THEN 'Thu nhập cho thuê' ELSE 'Yêu cầu rút tiền' END title,
+                       CASE WHEN tx.type='OWNER_EARNING' THEN 'Thu nhập cho thuê' ELSE 'Rút tiền' END title,
                        tx.description subtitle,
                        CASE WHEN tx.type='OWNER_EARNING' THEN 'RENTAL_INCOME' ELSE 'WITHDRAWAL' END type,
                        CASE WHEN tx.type='OWNER_EARNING' THEN tx.amount ELSE -tx.amount END amount,
@@ -325,11 +325,8 @@ public class OwnerWorkspaceService {
                 rs.getString("type"),rs.getBigDecimal("amount"),rs.getString("status"),local(rs.getTimestamp("created_at"))),ownerId);
     }
 
-    @Transactional
     public WalletResponse requestWithdrawal(long ownerId, WithdrawalRequest request) {
-        jdbc.query("SELECT id FROM users WHERE id=? FOR UPDATE",(rs,n)->rs.getLong(1),ownerId);
-        walletService.requestOwnerWithdrawal(ownerId,request.amount());
-        notify(ownerId,"WALLET","Đã ghi nhận yêu cầu rút tiền","Yêu cầu rút "+request.amount().toPlainString()+"đ đang chờ xử lý.","/owner/transactions");
+        walletService.withdraw(ownerId,request.amount());
         return wallet(ownerId);
     }
 
