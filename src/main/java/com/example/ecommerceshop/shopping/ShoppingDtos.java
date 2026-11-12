@@ -107,6 +107,7 @@ public final class ShoppingDtos {
             LocalDate endDate,
             BigDecimal dailyPrice,
             BigDecimal subtotal,
+            BigDecimal rentalRefunded,
             String damageDescription,
             BigDecimal damageAmount,
             String damageStatus,
@@ -136,8 +137,14 @@ public final class ShoppingDtos {
             String paymentMethod,
             String paymentStatus,
             LocalDateTime createdAt,
-            List<RentalItemDetail> items
+            List<RentalItemDetail> items,
+            List<RentalOwnerReview> ownerReviews
     ) {}
+
+    public record RentalOwnerReview(Long id, String ownerName, Integer rating,
+                                    Integer communicationRating, Integer punctualityRating,
+                                    Integer careRating, String equipmentCondition, String comment,
+                                    boolean isPublic, LocalDateTime createdAt) {}
 
     public record RenterDashboard(
             String fullName,

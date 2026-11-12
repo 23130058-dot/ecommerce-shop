@@ -26,7 +26,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**", "/api/stores", "/api/stores/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/avatars/**", "/uploads/storefront/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

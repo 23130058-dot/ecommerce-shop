@@ -19,3 +19,7 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET:lensrent-local-development-secret-key-change-before-deployment}
+  sms:
+    infobip-api-key: 8450782df614d034b0bedf389937ebd1-dc956df7-9067-4462-a1ca-a00d1b3b0a84
+    infobip-base-url: eewzz2.api.infobip.com
+    infobip-sender: InfoSMS

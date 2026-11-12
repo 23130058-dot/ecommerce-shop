@@ -10,6 +10,12 @@ import com.example.ecommerceshop.admin.AdminDtos.UpdateProductRequest;
 import com.example.ecommerceshop.admin.AdminDtos.RevenueTrendResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateUserRoleRequest;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateUserStatusRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateUserRequest;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateUserRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.ReviewProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateRentalAdminRequest;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateRentalAdminRequest;
 import com.example.ecommerceshop.admin.AdminDtos.UserPageResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserResponse;
 import jakarta.validation.Valid;
@@ -25,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDate;
 
@@ -60,6 +68,18 @@ public class AdminController {
         return adminService.getUsers(search, role, status, page, size);
     }
 
+    @PostMapping("/users")
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserResponse createUser(@Valid @RequestBody CreateUserRequest request) {
+        return adminService.createUser(request);
+    }
+
+    @PutMapping("/users/{id}")
+    public UserResponse updateUser(@PathVariable long id, @Valid @RequestBody UpdateUserRequest request,
+                                   @AuthenticationPrincipal Jwt jwt) {
+        return adminService.updateUser(id, request, jwt.getSubject());
+    }
+
     @PatchMapping("/users/{id}/status")
     public UserResponse updateUserStatus(@PathVariable long id,
                                          @Valid @RequestBody UpdateUserStatusRequest request,
@@ -82,6 +102,19 @@ public class AdminController {
             @RequestParam(defaultValue = "10") int size
     ) {
         return adminService.getProducts(search, status, page, size);
+    }
+
+    @PostMapping("/products")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProductAdminResponse createProduct(@Valid @RequestBody CreateProductRequest request) {
+        return adminService.createProduct(request);
+    }
+
+    @PatchMapping("/products/{id}/review")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void reviewProduct(@PathVariable long id, @Valid @RequestBody ReviewProductRequest request,
+                              @AuthenticationPrincipal Jwt jwt) {
+        adminService.reviewProduct(id, request, jwt.getSubject());
     }
 
     @PatchMapping("/products/{id}/status")
@@ -107,9 +140,26 @@ public class AdminController {
         return adminService.getOrders(search, status, page, size);
     }
 
+    @PostMapping("/orders")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RentalAdminDetail createOrder(@Valid @RequestBody CreateRentalAdminRequest request) {
+        return adminService.createOrder(request);
+    }
+
     @GetMapping("/orders/{id}")
     public RentalAdminDetail order(@PathVariable long id) {
         return adminService.getOrder(id);
+    }
+
+    @PutMapping("/orders/{id}")
+    public RentalAdminDetail updateOrder(@PathVariable long id, @Valid @RequestBody UpdateRentalAdminRequest request) {
+        return adminService.updateOrder(id, request);
+    }
+
+    @DeleteMapping("/orders/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteOrder(@PathVariable long id) {
+        adminService.deleteOrder(id);
     }
 
     @PatchMapping("/orders/{id}/cancel")

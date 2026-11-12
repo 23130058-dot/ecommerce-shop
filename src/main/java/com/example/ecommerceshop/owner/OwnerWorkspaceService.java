@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -45,7 +47,9 @@ public class OwnerWorkspaceService {
                            IN ('PAID','SUCCESS','COMPLETED')) AS pending_requests,
                     (SELECT COALESCE(AVG(rating), 0) FROM reviews
                      WHERE reviewed_user_id = ? AND is_public = TRUE) AS average_rating,
-                    (SELECT COALESCE(SUM(ri.subtotal), 0)
+                    (SELECT COALESCE(SUM(GREATEST(ri.subtotal-COALESCE((SELECT SUM(tx.amount) FROM wallet_transactions tx
+                                                                  WHERE tx.type='RENTAL_REFUND' AND tx.reference_type='RENTAL_ITEM'
+                                                                    AND tx.reference_id=ri.id),0),0)), 0)
                      FROM rental_items ri JOIN products p ON p.id = ri.product_id
                      WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status, '')) <> 'CANCELLED'
                        AND EXISTS (SELECT 1 FROM payments pay WHERE pay.rental_id = ri.rental_id
@@ -141,6 +145,32 @@ public class OwnerWorkspaceService {
         }, ownerId);
     }
 
+    @Transactional(readOnly = true)
+    public ScheduleOverviewResponse scheduleOverview(long ownerId, LocalDate from, LocalDate to) {
+        if (from == null || to == null || to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 62)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng lịch phải từ 1 đến 63 ngày.");
+        List<ScheduleCalendarEvent> events = jdbc.query("""
+                SELECT ri.id rental_item_id,r.id rental_id,r.rental_code,p.name product_name,
+                       COALESCE(u.full_name,r.contact_name,'Khách thuê') renter_name,ri.quantity,
+                       ri.start_date,ri.end_date,ri.status,ri.subtotal
+                FROM rental_items ri JOIN rentals r ON r.id=ri.rental_id
+                JOIN products p ON p.id=ri.product_id LEFT JOIN users u ON u.id=r.renter_id
+                WHERE p.owner_id=? AND ri.start_date<=? AND ri.end_date>?
+                  AND UPPER(COALESCE(ri.status,'')) NOT IN ('CANCELLED','CANCELED')
+                ORDER BY ri.start_date,ri.end_date,p.name,ri.id
+                """, (rs,n) -> new ScheduleCalendarEvent(rs.getLong("rental_item_id"),rs.getLong("rental_id"),
+                rs.getString("rental_code"),rs.getString("product_name"),rs.getString("renter_name"),
+                rs.getInt("quantity"),rs.getObject("start_date",LocalDate.class),rs.getObject("end_date",LocalDate.class),
+                rs.getString("status"),rs.getBigDecimal("subtotal")), ownerId, to, from);
+        long totalRentals = events.stream().map(ScheduleCalendarEvent::rentalId).distinct().count();
+        long activeDevices = events.stream().filter(event -> List.of("ACTIVE","IN_PROGRESS","RENTING","RETURN_PENDING","RETURN_REQUESTED","AWAITING_RETURN").contains(upper(event.status())))
+                .mapToLong(event -> event.quantity() == null ? 0 : event.quantity()).sum();
+        BigDecimal projectedRevenue = events.stream().filter(event -> List.of("PENDING","CONFIRMED","ACTIVE","IN_PROGRESS","RENTING","RETURN_PENDING","RETURN_REQUESTED","AWAITING_RETURN").contains(upper(event.status())))
+                .map(ScheduleCalendarEvent::subtotal).filter(value -> value != null).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new ScheduleOverviewResponse(from, to, totalRentals, activeDevices, projectedRevenue,
+                schedules(ownerId), events);
+    }
+
     @Transactional
     public ScheduleResponse saveSchedule(long ownerId, long productId, SaveScheduleRequest request) {
         requireOwnedProduct(ownerId, productId);
@@ -181,6 +211,21 @@ public class OwnerWorkspaceService {
     }
 
     @Transactional
+    public void confirmRentalReturns(long ownerId, long rentalId) {
+        List<Long> itemIds = jdbc.query("""
+                SELECT ri.id
+                FROM rental_items ri JOIN products p ON p.id = ri.product_id
+                WHERE ri.rental_id = ? AND p.owner_id = ?
+                  AND UPPER(COALESCE(ri.status, '')) IN ('RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN','DAMAGE_REPORTED')
+                ORDER BY ri.id FOR UPDATE OF ri
+                """, (rs, row) -> rs.getLong(1), rentalId, ownerId);
+        if (itemIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Đơn này không có thiết bị đang chờ xác nhận trả.");
+        }
+        for (Long rentalItemId : itemIds) confirmReturn(ownerId, rentalItemId);
+    }
+
+    @Transactional
     public void confirmReturn(long ownerId, long rentalItemId) {
         List<Long> ids = jdbc.query("""
                 SELECT ri.id FROM rental_items ri JOIN products p ON p.id=ri.product_id
@@ -189,14 +234,25 @@ public class OwnerWorkspaceService {
                 """, (rs,n)->rs.getLong(1), rentalItemId, ownerId);
         if (ids.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Thiết bị chưa có yêu cầu trả hoặc không thuộc tài khoản của bạn.");
         List<ReturnSettlementRow> settlementRows=jdbc.query("""
-                SELECT r.renter_id,p.owner_id,p.deposit_amount*ri.quantity deposit_amount,d.id damage_id
+                SELECT r.renter_id,p.owner_id,p.deposit_amount*ri.quantity deposit_amount,d.id damage_id,
+                       ri.start_date,ri.end_date,ri.subtotal,ri.return_requested_date
                 FROM rental_items ri JOIN rentals r ON r.id=ri.rental_id JOIN products p ON p.id=ri.product_id
                 LEFT JOIN damage_reports d ON d.rental_item_id=ri.id AND d.status IN ('OPEN','UNDER_REVIEW')
                 WHERE ri.id=?
                 """,(rs,n)->new ReturnSettlementRow(rs.getLong("renter_id"),rs.getLong("owner_id"),
                 rs.getBigDecimal("deposit_amount")==null?BigDecimal.ZERO:rs.getBigDecimal("deposit_amount"),
-                (Long)rs.getObject("damage_id")),rentalItemId);
+                (Long)rs.getObject("damage_id"),rs.getObject("start_date",LocalDate.class),
+                rs.getObject("end_date",LocalDate.class),rs.getBigDecimal("subtotal"),
+                rs.getObject("return_requested_date",LocalDate.class)),rentalItemId);
         ReturnSettlementRow settlement=settlementRows.get(0);
+        long plannedDays=settlement.startDate()==null||settlement.endDate()==null?0:ChronoUnit.DAYS.between(settlement.startDate(),settlement.endDate());
+        LocalDate returnDate=settlement.returnRequestedDate()==null?LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh")):settlement.returnRequestedDate();
+        LocalDate refundStart=settlement.startDate()!=null&&returnDate.isBefore(settlement.startDate())?settlement.startDate():returnDate;
+        long unusedDays=plannedDays>0&&settlement.endDate()!=null&&refundStart.isBefore(settlement.endDate())
+                ?ChronoUnit.DAYS.between(refundStart,settlement.endDate()):0;
+        BigDecimal earlyRefund=unusedDays>0?(settlement.rentalSubtotal()==null?BigDecimal.ZERO:settlement.rentalSubtotal()).multiply(BigDecimal.valueOf(unusedDays))
+                .divide(BigDecimal.valueOf(plannedDays),0,java.math.RoundingMode.HALF_UP):BigDecimal.ZERO;
+        walletService.refundEarlyReturn(rentalItemId,earlyRefund,unusedDays);
         if(settlement.damageId()==null) {
             jdbc.update("""
                     INSERT INTO deposit_settlements(rental_item_id,renter_id,owner_id,deposit_amount,refunded_amount,deducted_amount,status,note,resolved_at)
@@ -214,13 +270,18 @@ public class OwnerWorkspaceService {
         }
         jdbc.update("UPDATE rental_items SET status='COMPLETED' WHERE id=?",rentalItemId);
         jdbc.update("UPDATE products p SET stock=COALESCE(stock,0)+ri.quantity FROM rental_items ri WHERE ri.id=? AND p.id=ri.product_id",rentalItemId);
-        notifyRentalRenter(rentalItemId,"RETURN","Đã xác nhận hoàn trả","Owner đã xác nhận thiết bị được trả.","/renter/orders");
+        String returnMessage=earlyRefund.signum()>0
+                ?"Owner đã xác nhận nhận lại thiết bị. Hoàn "+earlyRefund.toPlainString()+"đ vào ví LensRent cho "+unusedDays+" ngày thuê chưa sử dụng."
+                :"Owner đã xác nhận thiết bị được trả.";
+        notifyRentalRenter(rentalItemId,"RETURN","Đã xác nhận hoàn trả",returnMessage,"/renter/orders");
         notify(settlement.renterId(),"DEPOSIT",settlement.damageId()==null?"Đã hoàn tiền cọc":"Tiền cọc đang chờ kiểm tra",
                 settlement.damageId()==null?"Tiền cọc đã được ghi nhận hoàn trả (mô phỏng).":"Owner đã gửi báo cáo hư hỏng; tiền cọc được giữ trong lúc Admin xem xét.","/renter/orders");
         syncRentalStatus(rentalItemId);
     }
 
-    private record ReturnSettlementRow(long renterId,long ownerId,BigDecimal depositAmount,Long damageId) {}
+    private record ReturnSettlementRow(long renterId,long ownerId,BigDecimal depositAmount,Long damageId,
+                                       LocalDate startDate,LocalDate endDate,BigDecimal rentalSubtotal,
+                                       LocalDate returnRequestedDate) {}
 
     @Transactional
     public void reportDamage(long ownerId, long rentalItemId, DamageReportRequest request) {

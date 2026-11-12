@@ -343,7 +343,6 @@ function VerificationTab({ notify, profile }) {
   const [loading, setLoading] = useState(true)
   const [phone, setPhone] = useState(profile?.phone || '')
   const [code, setCode] = useState('')
-  const [demoCode, setDemoCode] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -364,10 +363,9 @@ function VerificationTab({ notify, profile }) {
     try {
       const result = await requestPhoneVerificationCode(phone)
       setPhone(result.phone)
-      setDemoCode(result.demoCode || '')
       setExpiresAt(result.expiresAt || '')
       setCode('')
-      notify('Đã tạo mã xác minh mô phỏng')
+      notify(`Đã gửi mã xác minh qua SMS đến ${result.phone}`)
     } catch (requestError) { setError(requestError.message) }
     finally { setBusy('') }
   }
@@ -379,7 +377,7 @@ function VerificationTab({ notify, profile }) {
     try {
       const result = await confirmPhoneVerificationCode({ phone, code })
       setVerification(result)
-      setDemoCode('')
+      setExpiresAt('')
       setCode('')
       updateStoredUser({ phone: result.phone })
       notify('Đã xác minh số điện thoại')
@@ -411,7 +409,7 @@ function VerificationTab({ notify, profile }) {
   const phoneVerified = Boolean(verification?.phoneVerified)
   return (
     <div className="space-y-5">
-      <SectionCard title="Xác minh số điện thoại" description="Xác minh số điện thoại giúp người thuê và chủ thiết bị liên hệ khi cần. Mã OTP hiện chạy mô phỏng trong đồ án, chưa gửi SMS thật.">
+      <SectionCard title="Xác minh số điện thoại" description="Mã OTP được gửi qua SMS đến số điện thoại bạn nhập và có hiệu lực trong 5 phút.">
         {loading ? <p className="text-sm text-slate-500">Đang tải trạng thái xác minh…</p> : <>
           <div className={`mb-4 flex items-center gap-3 rounded-xl p-4 ${phoneVerified ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700'}`}>
             <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${phoneVerified ? 'bg-white text-emerald-600' : 'bg-white text-slate-500'}`}><Icon name={phoneVerified ? 'check' : 'shield'} size={19} /></span>
@@ -419,10 +417,10 @@ function VerificationTab({ notify, profile }) {
           </div>
           <form className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={requestCode}>
             <Field label="Số điện thoại" onChange={(event) => setPhone(event.target.value)} placeholder="Ví dụ: 0912345678" value={phone} required />
-            <button className="h-11 rounded-lg border border-orange-200 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-50 disabled:opacity-60" disabled={busy === 'phone'} type="submit">{busy === 'phone' ? 'Đang tạo mã…' : 'Tạo mã OTP mô phỏng'}</button>
+            <button className="h-11 rounded-lg border border-orange-200 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-50 disabled:opacity-60" disabled={busy === 'phone'} type="submit">{busy === 'phone' ? 'Đang gửi SMS…' : 'Gửi mã OTP qua SMS'}</button>
           </form>
-          {demoCode && <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4" role="status"><p className="text-xs font-bold uppercase tracking-wide text-orange-800">Mã test của đồ án</p><p className="mt-1 font-mono text-2xl font-extrabold tracking-[0.25em] text-orange-700">{demoCode}</p><p className="mt-1 text-xs leading-5 text-orange-800">Mã chỉ hiển thị để thử nghiệm, hết hạn sau 5 phút{expiresAt ? ` (${new Date(expiresAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : ''}. Hệ thống chưa tích hợp nhà cung cấp SMS.</p></div>}
-          {demoCode && <form className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={confirmCode}>
+          {expiresAt && <p className="mt-4 rounded-lg bg-orange-50 p-3 text-xs leading-5 text-orange-800" role="status">Đã gửi mã OTP qua SMS. Mã có hiệu lực trong 5 phút{expiresAt ? ` (đến ${new Date(expiresAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : ''}.</p>}
+          {expiresAt && <form className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={confirmCode}>
             <Field label="Mã xác minh 6 số" onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Nhập mã OTP" value={code} required maxLength={6} />
             <button className="h-11 rounded-lg bg-[#ff5500] px-5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60" disabled={busy === 'confirm' || code.length !== 6} type="submit">{busy === 'confirm' ? 'Đang xác minh…' : 'Xác minh số điện thoại'}</button>
           </form>}
@@ -434,7 +432,7 @@ function VerificationTab({ notify, profile }) {
           <VerificationDocumentCard title="Thẻ học sinh / sinh viên" description="Gửi ảnh thẻ còn hiệu lực để nhận ưu đãi giảm 15% trên tiền thuê sau khi Admin duyệt. Không giảm tiền cọc." type="student-card" status={verification?.studentCardStatus} reviewNote={verification?.studentCardReviewNote} submittedAt={verification?.studentCardSubmittedAt} accept="image/png,image/jpeg" busy={busy === 'student-card'} onFile={uploadDocument} />
           <VerificationDocumentCard title="Căn cước công dân (bắt buộc)" description="Gửi ảnh JPG/PNG hoặc PDF. Cần Admin duyệt CCCD trước khi đặt thuê hoặc đăng thiết bị Owner." type="identity" status={verification?.identityStatus} reviewNote={verification?.identityReviewNote} submittedAt={verification?.identitySubmittedAt} accept="image/png,image/jpeg,application/pdf" busy={busy === 'identity'} onFile={uploadDocument} />
         </div>}
-        <p className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">Đây là luồng xác minh phục vụ đồ án. Hiện chưa kết nối cơ quan xác thực, nhà cung cấp SMS hoặc hệ thống kiểm tra giấy tờ tự động; không tải giấy tờ thật nếu bạn không muốn chia sẻ với Admin dự án.</p>
+        <p className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">Việc gửi SMS cần cấu hình nhà cung cấp Twilio trong môi trường backend. Giấy tờ cá nhân vẫn được gửi cho Admin dự án duyệt thủ công.</p>
       </SectionCard>
       {error && <p aria-live="polite" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
     </div>

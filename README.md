@@ -68,6 +68,19 @@ Lệnh trên giữ lại dữ liệu trong Docker volume. Không thêm -v nếu 
 
 ## Chạy backend
 
+### Cấu hình gửi mã SMS
+
+Đăng nhập bằng số điện thoại và xác minh số điện thoại dùng SMS OTP qua Infobip. Đặt các biến môi trường sau trong terminal dùng để chạy backend (không commit API key):
+
+~~~powershell
+$env:INFOBIP_API_KEY = "..."
+$env:INFOBIP_BASE_URL = "your-account.api.infobip.com"
+$env:INFOBIP_SENDER = "InfoSMS"
+.\mvnw.cmd spring-boot:run
+~~~
+
+Số điện thoại đăng nhập phải được xác minh trong Cài đặt tài khoản trước. Mã OTP hết hạn sau 5 phút; backend chỉ lưu mã đã băm và giới hạn yêu cầu gửi lại. Tài khoản Infobip dùng thử chỉ gửi được tới số điện thoại đã xác minh trong Infobip.
+
 ### Cách dùng IntelliJ IDEA
 
 1. Mở project bằng IntelliJ và chờ Maven import hoàn tất.

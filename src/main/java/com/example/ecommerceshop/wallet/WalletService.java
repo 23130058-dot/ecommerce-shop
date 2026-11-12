@@ -128,6 +128,26 @@ public class WalletService {
     }
 
     @Transactional
+    public void refundEarlyReturn(long rentalItemId, BigDecimal amount, long unusedDays) {
+        BigDecimal refund=amount==null?BigDecimal.ZERO:amount.setScale(0,java.math.RoundingMode.HALF_UP);
+        if(refund.signum()<=0||unusedDays<=0) return;
+        List<Long> renters=jdbc.query("""
+                SELECT r.renter_id FROM rental_items ri JOIN rentals r ON r.id=ri.rental_id
+                WHERE ri.id=? AND EXISTS(SELECT 1 FROM payments pay WHERE pay.rental_id=r.id
+                  AND pay.status IN ('PAID','SUCCESS','COMPLETED'))
+                """,(rs,n)->rs.getLong(1),rentalItemId);
+        if(renters.isEmpty()) return;
+        long renterId=renters.get(0);
+        lockAccount(renterId);
+        if(jdbc.queryForObject("SELECT COUNT(*) FROM wallet_transactions WHERE user_id=? AND type='RENTAL_REFUND' AND reference_type='RENTAL_ITEM' AND reference_id=?",Integer.class,renterId,rentalItemId)>0) return;
+        AccountBalance before=balance(renterId);
+        BigDecimal available=before.available().add(refund);
+        jdbc.update("UPDATE wallet_accounts SET available_balance=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",available,renterId);
+        record(renterId,"RENTAL_REFUND",refund,"COMPLETED",available,before.held(),
+                "Hoàn tiền thuê sớm cho "+unusedDays+" ngày chưa sử dụng.","RENTAL_ITEM",rentalItemId);
+    }
+
+    @Transactional
     public void refundCancelledRental(long rentalId) {
         List<CancelledWalletRental> rows=jdbc.query("""
                 SELECT r.renter_id,r.total_amount,r.deposit_amount
@@ -185,7 +205,10 @@ public class WalletService {
 
     private void syncOwnerEarnings(long userId) {
         List<OwnerEarning> earnings=jdbc.query("""
-                SELECT ri.id AS rental_item_id,COALESCE(ri.subtotal,0) AS amount
+                SELECT ri.id AS rental_item_id,GREATEST(COALESCE(ri.subtotal,0)-COALESCE((
+                           SELECT SUM(tx.amount) FROM wallet_transactions tx
+                           WHERE tx.type='RENTAL_REFUND' AND tx.reference_type='RENTAL_ITEM' AND tx.reference_id=ri.id
+                       ),0),0) AS amount
                 FROM rental_items ri JOIN products p ON p.id=ri.product_id
                 WHERE p.owner_id=? AND UPPER(COALESCE(ri.status,''))='COMPLETED'
                   AND EXISTS(SELECT 1 FROM payments pay WHERE pay.rental_id=ri.rental_id

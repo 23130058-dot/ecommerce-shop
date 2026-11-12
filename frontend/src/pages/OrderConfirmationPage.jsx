@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
 import Footer from '../components/layout/Footer.jsx'
 import ConfirmDialog from '../components/layout/ConfirmDialog.jsx'
@@ -14,15 +14,23 @@ function money(value) {
 
 function dateTime(value) {
   if (!value) return 'Vừa xong'
-  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+  const timestamp = typeof value === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? `${value}Z` : value
+  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(timestamp))
+}
+
+function rentalToday() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+  return `${values.year}-${values.month}-${values.day}`
 }
 
 const paymentLabels = { MANUAL: 'Xác nhận trực tiếp (mô phỏng)', CARD: 'Thẻ tín dụng / ghi nợ', BANK_TRANSFER: 'Chuyển khoản ngân hàng', WALLET: 'Ví điện tử' }
-const statusLabels = { PENDING: 'Đang chờ chủ thiết bị xác nhận', CONFIRMED: 'Đã xác nhận', ACTIVE: 'Đang thuê', RENTING: 'Đang thuê', IN_PROGRESS: 'Đang thuê', RETURN_PENDING: 'Chờ Owner xác nhận trả', COMPLETED: 'Đã hoàn tất', CANCELLED: 'Đã hủy', CANCELED: 'Đã hủy' }
+const statusLabels = { PENDING: 'Đang chờ chủ thiết bị xác nhận', CONFIRMED: 'Đã xác nhận', HANDED_OVER: 'Đã bàn giao · chờ ngày thuê', CANCEL_REQUESTED: 'Chờ Owner xác nhận đã nhận lại thiết bị', ACTIVE: 'Đang thuê', RENTING: 'Đang thuê', IN_PROGRESS: 'Đang thuê', RETURN_PENDING: 'Chờ Owner xác nhận trả', RETURN_REQUESTED: 'Chờ Owner xác nhận trả', AWAITING_RETURN: 'Chờ Owner xác nhận trả', COMPLETED: 'Đã hoàn tất', CANCELLED: 'Đã hủy', CANCELED: 'Đã hủy', REJECTED: 'Đã từ chối' }
 
 export default function OrderConfirmationPage() {
   const { rentalId } = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const isNewOrder = location.pathname.startsWith('/checkout/complete/')
   const [rental, setRental] = useState(null)
   const [products, setProducts] = useState([])
@@ -75,9 +83,25 @@ export default function OrderConfirmationPage() {
   }, [rental?.rentalId, selectedOwnerId])
 
   const currentStatus = String(rental?.status || '').toUpperCase()
-  const canCancel = ['PENDING','CONFIRMED'].includes(currentStatus) && rental?.items?.some((item) => item.startDate > new Date().toISOString().slice(0,10))
+  const today = rentalToday()
+  const allItemsFuture = Boolean(rental?.items?.length) && rental.items.every((item) => item.startDate > today)
   const returnStatuses = ['ACTIVE','IN_PROGRESS','RENTING'].includes(currentStatus)
-  const hasStartedRentalItem = rental?.items?.some((item) => item.startDate <= new Date().toISOString().slice(0,10))
+  const cancellationRequested = currentStatus === 'CANCEL_REQUESTED'
+  const canCancel = !cancellationRequested && (returnStatuses || currentStatus === 'PENDING' || (allItemsFuture && currentStatus === 'CONFIRMED'))
+  const cancellationRequiresOwnerConfirmation = returnStatuses
+  const hasStartedRentalItem = rental?.items?.some((item) => item.startDate <= today)
+  const handedOverBeforeStart = returnStatuses && rental?.items?.length > 0 && rental.items.every((item) => item.startDate > today)
+  const displayedStatus = cancellationRequested ? 'CANCEL_REQUESTED' : handedOverBeforeStart ? 'HANDED_OVER' : currentStatus
+  const nextRentalDate = handedOverBeforeStart ? rental.items.map((item) => item.startDate).sort()[0] : null
+  const trackOrder = () => {
+    const target = `/renter/orders/${rentalId}`
+    const scrollToStatus = () => document.getElementById('rental-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (location.pathname === target) scrollToStatus()
+    else {
+      navigate(target)
+      window.setTimeout(scrollToStatus, 200)
+    }
+  }
   const canShowReturnRequest = returnStatuses
   const canRequestReturn = returnStatuses && hasStartedRentalItem
   const runOrderAction = async (action) => {
@@ -87,7 +111,7 @@ export default function OrderConfirmationPage() {
       else await requestRentalReturn(rentalId)
       setRental(await getRental(rentalId))
       if (action === 'cancel') setShowCancelConfirm(false)
-      showToast(action === 'cancel' ? 'Đơn thuê đã được hủy.' : 'Yêu cầu trả thiết bị đã được gửi cho Owner.', 'success')
+      showToast(action === 'cancel' ? (cancellationRequiresOwnerConfirmation ? 'Đã gửi yêu cầu hủy. Owner cần xác nhận đã nhận lại thiết bị.' : 'Đơn thuê đã được hủy.') : 'Yêu cầu trả thiết bị đã được gửi cho Owner.', 'success')
     } catch (actionError) {
       showToast(actionError.message || 'Không thể cập nhật đơn thuê. Vui lòng thử lại.', 'error')
       if (action === 'return') getRental(rentalId).then(setRental).catch(() => {})
@@ -116,13 +140,34 @@ export default function OrderConfirmationPage() {
     } catch (error) { showToast(error.message, 'error') }
     finally { setDisputeBusy(null) }
   }
-  const timeline = [
-    { title: 'Đặt đơn thuê thành công', detail: 'Yêu cầu thuê đã được lưu vào tài khoản LensRent.', done: Boolean(rental) },
-    { title: 'Xác nhận thanh toán', detail: rental?.paymentStatus === 'PAID' ? 'Thanh toán mô phỏng đã được ghi nhận thành công.' : 'Đang cập nhật trạng thái thanh toán.', done: rental?.paymentStatus === 'PAID', current: rental?.paymentStatus !== 'PAID' },
-    { title: 'Chuẩn bị thiết bị', detail: 'Chủ thiết bị sẽ chuẩn bị và kiểm tra thiết bị cho bạn.', done: ['CONFIRMED', 'ACTIVE', 'RENTING', 'IN_PROGRESS', 'COMPLETED'].includes(currentStatus) },
-    { title: 'Bàn giao thiết bị', detail: 'Theo dõi lịch nhận thiết bị trong phần đơn thuê.', done: ['ACTIVE', 'RENTING', 'IN_PROGRESS', 'COMPLETED'].includes(currentStatus) },
-    { title: 'Đang thuê', detail: 'Thiết bị sẽ xuất hiện trong danh sách đang thuê.', done: ['ACTIVE', 'RENTING', 'IN_PROGRESS'].includes(currentStatus) },
-  ]
+  const canceledStatus = ['CANCELLED', 'CANCELED', 'REJECTED'].includes(currentStatus)
+  const returnRequested = ['RETURN_PENDING', 'RETURN_REQUESTED', 'AWAITING_RETURN'].includes(currentStatus)
+  const timeline = canceledStatus
+    ? [
+      { title: 'Yêu cầu thuê đã được ghi nhận', detail: `Đơn #${rental?.rentalCode || ''} đã được lưu trong lịch sử thuê.`, done: true },
+      { title: currentStatus === 'REJECTED' ? 'Đơn bị từ chối' : 'Đơn thuê đã hủy', detail: currentStatus === 'REJECTED' ? 'Chủ thiết bị không thể xác nhận đơn thuê này.' : 'Đơn đã kết thúc và được lưu lại trong lịch sử, không bị xóa.', done: true, terminal: true },
+      ...(rental?.paymentStatus === 'PAID' ? [{ title: 'Đang xử lý khoản hoàn tiền', detail: 'Theo dõi cập nhật hoàn tiền trong thông tin thanh toán của đơn.', done: false, current: true }] : []),
+    ]
+    : cancellationRequested
+      ? [
+        { title: 'Đơn thuê đã được xác nhận', detail: 'Yêu cầu thuê đã được Owner tiếp nhận.', done: true },
+        { title: 'Thiết bị đã bàn giao', detail: 'Thiết bị đang được người thuê giữ và cần được hoàn trả cho Owner.', done: true },
+        { title: 'Đã gửi yêu cầu hủy', detail: 'Chờ Owner nhận lại thiết bị và xác nhận để hoàn tất hủy đơn.', done: false, current: true },
+      ]
+      : returnRequested
+        ? [
+          { title: 'Đơn thuê đã được xác nhận', detail: 'Owner đã tiếp nhận đơn thuê.', done: true },
+          { title: 'Thiết bị đã bàn giao', detail: 'Thiết bị đã được bàn giao cho người thuê.', done: true },
+          { title: 'Đã gửi yêu cầu trả thiết bị', detail: 'Chờ Owner nhận thiết bị và xác nhận tình trạng khi hoàn trả.', done: false, current: true },
+          { title: 'Hoàn tất đơn thuê', detail: 'Đơn sẽ hoàn tất sau khi Owner xác nhận đã nhận lại thiết bị.', done: false },
+        ]
+        : [
+          { title: 'Đặt đơn thuê thành công', detail: 'Yêu cầu thuê đã được lưu vào tài khoản LensRent.', done: Boolean(rental) },
+          { title: 'Xác nhận thanh toán', detail: rental?.paymentStatus === 'PAID' ? 'Thanh toán mô phỏng đã được ghi nhận thành công.' : 'Đang cập nhật trạng thái thanh toán.', done: rental?.paymentStatus === 'PAID', current: rental?.paymentStatus !== 'PAID' && currentStatus === 'PENDING' },
+          { title: 'Chuẩn bị thiết bị', detail: 'Chủ thiết bị sẽ chuẩn bị và kiểm tra thiết bị cho bạn.', done: ['CONFIRMED', 'ACTIVE', 'RENTING', 'IN_PROGRESS', 'COMPLETED'].includes(currentStatus), current: currentStatus === 'PENDING' && rental?.paymentStatus === 'PAID' },
+          { title: 'Bàn giao thiết bị', detail: 'Owner sẽ cập nhật khi đã giao thiết bị cho bạn.', done: ['ACTIVE', 'RENTING', 'IN_PROGRESS', 'COMPLETED'].includes(currentStatus), current: currentStatus === 'CONFIRMED' },
+          { title: 'Thời gian thuê và hoàn trả', detail: handedOverBeforeStart ? `Đã nhận thiết bị. Lịch thuê bắt đầu ngày ${nextRentalDate}.` : returnStatuses ? 'Thiết bị đang được thuê. Gửi yêu cầu trả khi bạn sẵn sàng hoàn trả.' : 'Thiết bị sẽ chuyển sang trạng thái đang thuê vào ngày bắt đầu.', done: currentStatus === 'COMPLETED' || (returnStatuses && hasStartedRentalItem), current: handedOverBeforeStart || (returnStatuses && hasStartedRentalItem) },
+        ]
 
   return <div className="flex min-h-screen flex-col bg-[#f7f9fc] text-gray-900">
     <Header />
@@ -136,22 +181,33 @@ export default function OrderConfirmationPage() {
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#ff5500]">{isNewOrder ? 'LensRent · Hoàn tất yêu cầu' : `LensRent · Đơn ${rental.rentalCode}`}</p>
                   <h1 className="mt-1 text-2xl font-extrabold sm:text-3xl">{isNewOrder ? 'Đơn hàng đã được ghi nhận!' : 'Thông tin đơn thuê'}</h1>
-                  <p className="mt-2 text-sm leading-6 text-gray-500">{isNewOrder ? <>Mã đơn <b className="text-[#ff5500]">#{rental.rentalCode}</b> đã được tạo và thanh toán mô phỏng thành công. Chủ thiết bị sẽ cập nhật khi xác nhận đơn.</> : <>Trạng thái hiện tại: <b className="text-gray-800">{statusLabels[currentStatus] || currentStatus}</b>.</>}</p>
-                  <div className="mt-4 flex flex-wrap gap-2"><Link className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600" to={`/renter/orders/${rental.rentalId}`}>Theo dõi đơn thuê</Link>{canCancel&&<button disabled={actionBusy} onClick={()=>setShowCancelConfirm(true)} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50">Hủy đơn</button>}{canShowReturnRequest&&<button disabled={actionBusy || !canRequestReturn} title={!canRequestReturn ? 'Chỉ có thể yêu cầu trả từ ngày bắt đầu thuê.' : undefined} onClick={()=>runOrderAction('return')} className="rounded-lg border border-orange-200 px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{actionBusy?'Đang xử lý…':canRequestReturn?'Yêu cầu trả thiết bị':'Chưa đến ngày thuê'}</button>}<button className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" onClick={() => window.print()} type="button">In hóa đơn</button></div>
+                  <p className="mt-2 text-sm leading-6 text-gray-500">{isNewOrder ? <>Mã đơn <b className="text-[#ff5500]">#{rental.rentalCode}</b> đã được tạo và thanh toán mô phỏng thành công. Chủ thiết bị sẽ cập nhật khi xác nhận đơn.</> : <>Trạng thái hiện tại: <b className="text-gray-800">{statusLabels[displayedStatus] || displayedStatus}</b>.</>}</p>
+                  <div className="mt-4 flex flex-wrap gap-2"><button type="button" className="rounded-lg bg-[#ff5500] px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600" onClick={trackOrder}>Theo dõi đơn thuê</button>{canCancel&&<button disabled={actionBusy} onClick={()=>setShowCancelConfirm(true)} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50">{cancellationRequiresOwnerConfirmation?'Yêu cầu hủy đơn':'Hủy đơn'}</button>}{canShowReturnRequest&&<button disabled={actionBusy || !canRequestReturn} title={!canRequestReturn ? 'Chỉ có thể yêu cầu trả từ ngày bắt đầu thuê.' : undefined} onClick={()=>runOrderAction('return')} className="rounded-lg border border-orange-200 px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{actionBusy?'Đang xử lý…':canRequestReturn?'Yêu cầu trả thiết bị':'Chưa đến ngày thuê'}</button>}<button className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" onClick={() => window.print()} type="button">In hóa đơn</button></div>
+                  {handedOverBeforeStart && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">Owner đã bàn giao thiết bị nhưng lịch thuê chưa bắt đầu. Bạn có thể gửi yêu cầu hủy; Owner sẽ xác nhận sau khi thiết bị đã về tay họ.</p>}
+                  {cancellationRequested && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">Yêu cầu hủy đã gửi. Đơn và khoản hoàn tiền sẽ được xử lý sau khi Owner xác nhận thiết bị đã được nhận lại.</p>}
+                  {returnRequested && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">Khi Owner xác nhận đã nhận lại thiết bị, tiền thuê của những ngày còn lại sẽ được hoàn vào ví LensRent. Tiền cọc và tình trạng hư hỏng được xử lý riêng.</p>}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+            <section id="rental-status" className="scroll-mt-24 rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
               <h2 className="text-base font-extrabold">Trạng thái đơn hàng</h2>
               <ol className="mt-5 space-y-0">
                 {timeline.map((step, index) => <li className="relative flex gap-3 pb-5 last:pb-0" key={step.title}>
-                  {index < timeline.length - 1 && <span className={`absolute bottom-0 left-[11px] top-6 w-px ${step.done ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
-                  <span className={`relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? 'bg-emerald-500 text-white' : step.current ? 'border-2 border-[#ff5500] bg-white text-[#ff5500]' : 'bg-gray-100 text-gray-400'}`}>{step.done ? '✓' : index + 1}</span>
-                  <div><p className={`text-sm font-bold ${step.current ? 'text-[#ed4b0a]' : step.done ? 'text-gray-800' : 'text-gray-500'}`}>{step.title}</p><p className="mt-1 text-xs leading-5 text-gray-500">{step.detail}</p>{step.current && <p className="mt-1 text-xs font-semibold text-[#ed4b0a]">{dateTime(rental.createdAt)}</p>}</div>
+                  {index < timeline.length - 1 && <span className={`absolute bottom-0 left-[11px] top-6 w-px ${step.done ? step.terminal ? 'bg-rose-200' : 'bg-emerald-300' : 'bg-gray-200'}`} />}
+                  <span className={`relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.terminal ? 'bg-rose-100 text-rose-600' : step.done ? 'bg-emerald-500 text-white' : step.current ? 'border-2 border-[#ff5500] bg-white text-[#ff5500]' : 'bg-gray-100 text-gray-400'}`}>{step.terminal ? '×' : step.done ? '✓' : index + 1}</span>
+                  <div><p className={`text-sm font-bold ${step.terminal ? 'text-rose-700' : step.current ? 'text-[#ed4b0a]' : step.done ? 'text-gray-800' : 'text-gray-500'}`}>{step.title}</p><p className="mt-1 text-xs leading-5 text-gray-500">{step.detail}</p></div>
                 </li>)}
               </ol>
             </section>
+            {rental.ownerReviews?.length > 0 && <section className="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-extrabold">Đánh giá từ Owner</h2><p className="mt-1 text-xs text-gray-500">Nhận xét được gắn với đơn thuê này.</p></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{rental.ownerReviews.length} đánh giá</span></div>
+              <div className="mt-4 space-y-3">{rental.ownerReviews.map((review) => <article key={review.id} className="rounded-xl border border-gray-100 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-bold text-gray-800">{review.ownerName}</p><p className="mt-1 text-sm tracking-wide text-amber-500">{'★'.repeat(Number(review.rating) || 0)}<span className="text-gray-200">{'★'.repeat(5 - (Number(review.rating) || 0))}</span><span className="ml-2 text-xs font-semibold text-gray-500">{review.rating}/5</span></p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${review.isPublic ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{review.isPublic ? 'Đánh giá công khai' : 'Riêng tư · chỉ bạn và Owner'}</span></div>
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>Giao tiếp: <b className="text-gray-700">{review.communicationRating ?? '—'}/5</b></span><span>Đúng giờ: <b className="text-gray-700">{review.punctualityRating ?? '—'}/5</b></span><span>Bảo quản: <b className="text-gray-700">{review.careRating ?? '—'}/5</b></span><span>Tình trạng thiết bị: <b className="text-gray-700">{{ PERFECT: 'Nguyên vẹn', MINOR_WEAR: 'Hao mòn nhẹ', DAMAGED: 'Có hư hỏng' }[review.equipmentCondition] || '—'}</b></span></div>
+                {review.comment && <p className="mt-3 whitespace-pre-line text-sm leading-6 text-gray-700">{review.comment}</p>}
+              </article>)}</div>
+            </section>}
             <section className="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div><h2 className="text-base font-extrabold">Trao đổi với Owner</h2><p className="mt-1 text-xs text-gray-500">Tin nhắn được lưu theo đơn thuê.</p></div>
@@ -172,7 +228,7 @@ export default function OrderConfirmationPage() {
             <div className="mt-4 divide-y divide-gray-100">
               {rental.items.map((item) => <div className="flex gap-3 py-3 first:pt-0" key={item.productId}>
                 <Link className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 p-1.5" to={`/products/${item.productId}`}><img alt={item.name} className="max-h-full max-w-full object-contain" src={resolveProductImage(item.imageKey)} /></Link>
-                <div className="min-w-0 flex-1"><Link className="line-clamp-2 text-sm font-bold text-gray-800 hover:text-[#ff5500]" to={`/products/${item.productId}`}>{item.name}</Link><p className="mt-1 text-xs text-gray-500">{item.quantity} thiết bị · {item.startDate} – {item.endDate}</p>
+                <div className="min-w-0 flex-1"><Link className="line-clamp-2 text-sm font-bold text-gray-800 hover:text-[#ff5500]" to={`/products/${item.productId}`}>{item.name}</Link><p className="mt-1 text-xs text-gray-500">{item.quantity} thiết bị · {item.startDate} – {item.endDate}</p>{Number(item.rentalRefunded) > 0 && <p className="mt-2 text-xs font-semibold text-emerald-700">Đã hoàn tiền thuê sớm: {money(item.rentalRefunded)}</p>}
                   {item.damageDescription && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs"><p className="font-bold text-amber-900">Báo cáo tình trạng thiết bị</p><p className="mt-1 leading-5 text-amber-800">{item.damageDescription} · Mức thiệt hại đề xuất {money(item.damageAmount)}</p>{item.depositStatus && <p className="mt-1 font-semibold text-amber-900">Tiền cọc: {item.depositStatus === 'PENDING_REVIEW' ? 'Đang chờ xử lý' : item.depositStatus} · hoàn {money(item.depositRefunded)} · khấu trừ {money(item.depositDeducted)}</p>}
                     {['OPEN','UNDER_REVIEW'].includes(String(item.damageStatus || '').toUpperCase()) && !item.disputeStatus && <form onSubmit={(event) => sendDispute(event,item)} className="mt-3 space-y-2"><textarea required maxLength={2000} value={disputeForms[item.rentalItemId]?.reason || ''} onChange={(event) => setDisputeForms((current) => ({ ...current, [item.rentalItemId]: { ...current[item.rentalItemId], reason: event.target.value } }))} placeholder="Ý kiến của bạn về báo cáo…" rows={2} className="w-full rounded-lg border border-amber-200 bg-white p-2" /><div className="flex flex-wrap gap-2"><input type="number" min="0" step="1000" value={disputeForms[item.rentalItemId]?.requestedAmount ?? item.damageAmount ?? 0} onChange={(event) => setDisputeForms((current) => ({ ...current, [item.rentalItemId]: { ...current[item.rentalItemId], requestedAmount: event.target.value } }))} aria-label="Số tiền đề nghị xem xét" className="w-36 rounded-lg border border-amber-200 bg-white px-2 py-1.5" /><button disabled={disputeBusy === item.rentalItemId} className="rounded-lg bg-amber-700 px-3 py-1.5 font-bold text-white disabled:opacity-50">{disputeBusy === item.rentalItemId ? 'Đang gửi…' : 'Gửi khiếu nại'}</button></div></form>}
                     {item.disputeStatus && <p className="mt-2 font-semibold text-amber-900">Trạng thái khiếu nại: {item.disputeStatus}</p>}
@@ -207,6 +263,6 @@ export default function OrderConfirmationPage() {
       </>}
     </main>
     <Footer />
-    <ConfirmDialog open={showCancelConfirm} title="Hủy đơn thuê?" message="Bạn có chắc muốn hủy đơn thuê này không?" confirmLabel="Hủy đơn" tone="danger" busy={actionBusy} onCancel={() => setShowCancelConfirm(false)} onConfirm={() => runOrderAction('cancel')} />
+    <ConfirmDialog open={showCancelConfirm} title={cancellationRequiresOwnerConfirmation ? 'Gửi yêu cầu hủy đơn?' : 'Hủy đơn thuê?'} message={cancellationRequiresOwnerConfirmation ? 'Yêu cầu hủy sẽ được gửi đến Owner. Đơn chỉ được hủy và tiền xử lý sau khi Owner xác nhận đã nhận lại thiết bị.' : 'Bạn có chắc muốn hủy đơn thuê này không?'} confirmLabel={cancellationRequiresOwnerConfirmation ? 'Gửi yêu cầu hủy' : 'Hủy đơn'} tone="danger" busy={actionBusy} onCancel={() => setShowCancelConfirm(false)} onConfirm={() => runOrderAction('cancel')} />
   </div>
 }

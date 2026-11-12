@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import com.example.ecommerceshop.notification.SmsSender;
 
 import java.io.IOException;
 import java.sql.Timestamp;
@@ -26,10 +27,12 @@ public class AccountVerificationService {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
+    private final SmsSender smsSender;
 
-    public AccountVerificationService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder) {
+    public AccountVerificationService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, SmsSender smsSender) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
+        this.smsSender = smsSender;
     }
 
     @Transactional(readOnly = true)
@@ -39,7 +42,7 @@ public class AccountVerificationService {
 
     @Transactional
     public PhoneCodeResponse sendPhoneCode(long userId, PhoneCodeRequest request) {
-        String phone = normalizePhone(request.phone());
+        String phone = PhoneNumbers.normalize(request.phone());
         Integer recent = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM account_phone_verification_codes
                 WHERE user_id = ? AND created_at > CURRENT_TIMESTAMP - INTERVAL '30 seconds'
@@ -56,12 +59,13 @@ public class AccountVerificationService {
                 ON CONFLICT(user_id) DO UPDATE SET phone = EXCLUDED.phone, code_hash = EXCLUDED.code_hash,
                     expires_at = EXCLUDED.expires_at, attempts = 0, created_at = CURRENT_TIMESTAMP
                 """, userId, phone, passwordEncoder.encode(code), Timestamp.valueOf(expiresAt));
-        return new PhoneCodeResponse(phone, code, expiresAt);
+        smsSender.send(phone, "LensRent: ma xac minh so dien thoai cua ban la " + code + ". Ma co hieu luc trong 5 phut. Khong chia se ma nay voi bat ky ai.");
+        return new PhoneCodeResponse(phone, expiresAt);
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
     public VerificationResponse confirmPhone(long userId, ConfirmPhoneRequest request) {
-        String phone = normalizePhone(request.phone());
+        String phone = PhoneNumbers.normalize(request.phone());
         List<PhoneChallenge> matches = jdbc.query("""
                 SELECT phone, code_hash, expires_at, attempts FROM account_phone_verification_codes WHERE user_id = ?
                 """, (rs, rowNum) -> new PhoneChallenge(rs.getString("phone"), rs.getString("code_hash"),
@@ -197,15 +201,6 @@ public class AccountVerificationService {
             Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE id = ?", Integer.class, userId);
             if (exists == null || exists == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản.");
         }
-    }
-
-    private String normalizePhone(String input) {
-        String phone = input == null ? "" : input.trim().replaceAll("[\\s().-]", "");
-        long digitCount = phone.chars().filter(Character::isDigit).count();
-        if (!phone.matches("\\+?[0-9]{8,15}") || digitCount < 8) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại không hợp lệ.");
-        }
-        return phone;
     }
 
     private String detectContentType(String requestedType, byte[] bytes, DocumentKind kind) {

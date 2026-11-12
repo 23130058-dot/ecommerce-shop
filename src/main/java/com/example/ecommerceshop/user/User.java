@@ -88,4 +88,10 @@ public class User {
 
     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+
+    public void updateAdminFields(String fullName, String email, String phone) {
+        this.fullName = fullName;
+        this.email = email;
+        this.phone = phone;
+    }
 }

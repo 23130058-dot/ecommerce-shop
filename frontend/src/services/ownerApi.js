@@ -44,7 +44,13 @@ export const confirmOwnerBooking = (rentalId) => request(`/bookings/${encodeURIC
 export const handoverOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/handover`, { method: 'PATCH' })
 export const completeOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/complete`, { method: 'PATCH' })
 export const cancelOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/cancel`, { method: 'PATCH' })
+export const confirmOwnerCancellationReturn = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/cancel-return`, { method: 'PATCH' })
+export const confirmOwnerBookingReturn = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/return`, { method: 'PATCH' })
 export const getOwnerSchedules = (options) => request('/schedule', options)
+export const getOwnerScheduleOverview = ({ from, to, signal } = {}) => {
+  const query = new URLSearchParams({ from, to })
+  return request(`/schedule/overview?${query.toString()}`, { signal })
+}
 export const saveOwnerSchedule = (productId, body) => request(`/schedule/${encodeURIComponent(productId)}`, { method: 'PUT', body })
 export const getOwnerReturns = (options) => request('/returns', options)
 export const confirmOwnerReturn = (rentalItemId) => request(`/returns/${encodeURIComponent(rentalItemId)}/confirm`, { method: 'PATCH' })

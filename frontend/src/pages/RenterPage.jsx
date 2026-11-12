@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { resolveProductImage } from '../components/home/productImageMap.js'
-import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import DataTable from '../components/shared/DataTable.jsx'
 import { getAccountWallet, topUpAccountWallet, withdrawAccountWallet } from '../services/accountApi.js'
@@ -20,6 +19,8 @@ const navigation = [
 const statusLabels = {
   PENDING: 'Chờ xác nhận',
   CONFIRMED: 'Đã xác nhận',
+  HANDED_OVER: 'Đã bàn giao · chờ ngày thuê',
+  CANCEL_REQUESTED: 'Chờ Owner xác nhận hủy',
   ACTIVE: 'Đang thuê',
   RENTING: 'Đang thuê',
   IN_PROGRESS: 'Đang thuê',
@@ -71,7 +72,7 @@ function RentalRow({ rental }) {
   const status = String(rental.status || '').toUpperCase()
   const statusTone = ['COMPLETED'].includes(status)
     ? 'bg-emerald-50 text-emerald-700'
-    : ['ACTIVE', 'RENTING', 'IN_PROGRESS', 'CONFIRMED'].includes(status)
+    : ['ACTIVE', 'RENTING', 'IN_PROGRESS', 'CONFIRMED', 'HANDED_OVER'].includes(status)
       ? 'bg-blue-50 text-blue-700'
       : ['CANCELLED', 'CANCELED', 'REJECTED'].includes(status)
         ? 'bg-gray-100 text-gray-600'
@@ -252,25 +253,24 @@ export default function RenterPage() {
   ]
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f7f9fc] font-sans text-gray-900">
+    <div className="flex min-h-screen w-full flex-col bg-[#f7f8fa] font-sans text-[#1f2937]">
       <Header />
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <div className="grid items-start gap-5 lg:grid-cols-[230px_minmax(0,1fr)] xl:gap-6">
-          <aside className="space-y-4">
-            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-[#ed4b0a]">{(dashboard?.fullName || auth.user?.fullName || 'LR').slice(0, 1).toLocaleUpperCase('vi')}</div>
-              <div className="min-w-0"><p className="truncate text-sm font-bold">{dashboard?.fullName || auth.user?.fullName || 'Khách thuê'}</p><p className="mt-0.5 text-xs text-gray-400">Người thuê LensRent</p></div>
-            </div>
-            <nav aria-label="Workspace renter" className="rounded-xl border border-gray-200 bg-white p-2">
-              <p className="px-3 pb-2 pt-2 text-xs font-bold uppercase tracking-wider text-gray-400">Workspace</p>
+      <div className="flex w-full flex-1 flex-col items-stretch lg:flex-row">
+          <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-3 lg:block">
+            <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-sm font-bold text-[#ed4b0a]">{(dashboard?.fullName || auth.user?.fullName || 'LR').slice(0, 1).toLocaleUpperCase('vi')}</div><div className="min-w-0"><p className="truncate text-[11px] font-semibold text-gray-800">{dashboard?.fullName || auth.user?.fullName || 'Khách thuê'}</p><p className="text-[10px] text-gray-400">Người thuê</p></div></div>
+            <nav aria-label="Workspace renter" className="space-y-1 pt-4">
+              <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Workspace</p>
               {navigation.map((item) => (
-                <NavLink className={({ isActive }) => `mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`} end={item.to === '/renter'} key={item.to} to={item.to}>
+                <NavLink className={({ isActive }) => `flex min-h-9 items-center gap-3 rounded-lg px-3 text-[12px] transition ${isActive ? 'bg-orange-50 font-semibold text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`} end={item.to === '/renter'} key={item.to} to={item.to}>
                   <span className="w-5 text-center text-base" aria-hidden="true">{item.icon}</span>{item.label}
                 </NavLink>
               ))}
             </nav>
           </aside>
-
+          <nav aria-label="Workspace renter" className="flex gap-2 overflow-x-auto border-b border-gray-200 bg-white px-4 py-3 lg:hidden">
+            {navigation.map((item) => <NavLink className={({ isActive }) => `inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-medium ${isActive ? 'border-orange-200 bg-orange-50 text-[#e94b0a]' : 'border-gray-200 bg-white text-gray-600'}`} end={item.to === '/renter'} key={item.to} to={item.to}><span aria-hidden="true">{item.icon}</span>{item.label}</NavLink>)}
+          </nav>
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
           <section className="min-w-0">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
               <div>
@@ -348,9 +348,8 @@ export default function RenterPage() {
               </>
             )}
           </section>
-        </div>
-      </main>
-      <Footer />
+          </main>
+      </div>
     </div>
   )
 }

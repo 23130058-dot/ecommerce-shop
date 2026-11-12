@@ -207,18 +207,19 @@ export default function OwnerSidebar() {
     }
 
     return (
-        <aside className="space-y-4">
-            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+        <>
+        <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-3 lg:block">
+            <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-[#ed4b0a]">
                     {ownerName.slice(0, 1).toLocaleUpperCase('vi')}
                 </div>
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-gray-900">{ownerName}</p>
-                    <p className="mt-0.5 text-xs text-gray-400">Chủ thiết bị LensRent</p>
+                    <p className="truncate text-[11px] font-semibold text-gray-800">{ownerName}</p>
+                    <p className="mt-0.5 text-[10px] text-gray-400">Chủ thiết bị</p>
                 </div>
             </div>
 
-            <nav aria-label="Workspace owner" className="rounded-xl border border-gray-200 bg-white p-2">
+            <nav aria-label="Workspace owner" className="space-y-1 pt-4">
                 {menuGroups.map((group) => (
                     <div key={group.title} className="mb-3 last:mb-0">
                         <h2 className="px-3 pb-2 pt-2 text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -233,7 +234,7 @@ export default function OwnerSidebar() {
                                         type="button"
                                         onClick={() => navigate(item.path)}
                                         aria-current={active ? 'page' : undefined}
-                                        className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${active ? 'bg-orange-50 text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                                        className={`flex min-h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-[12px] transition ${active ? 'bg-orange-50 font-semibold text-[#e94b0a]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
                                     >
                                         <span className="flex w-5 shrink-0 items-center justify-center" aria-hidden="true">
                                             <MenuIcon type={item.icon} active={active} />
@@ -247,11 +248,18 @@ export default function OwnerSidebar() {
                 ))}
             </nav>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="mt-5 border-t border-gray-100 px-2 pt-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Cần hỗ trợ?</p>
                 <p className="mt-2 text-xs leading-5 text-gray-500">Liên hệ đội ngũ LensRent để được trợ giúp về lịch thuê hoặc thiết bị.</p>
                 <a className="mt-3 inline-flex rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:border-[#ff5500] hover:text-[#ff5500]" href="tel:19006789">Hỗ trợ ngay</a>
             </div>
         </aside>
+        <nav aria-label="Workspace owner" className="flex gap-2 overflow-x-auto border-b border-gray-200 bg-white px-4 py-3 lg:hidden">
+            {menuGroups.flatMap((group) => group.items).map((item) => {
+                const active = isActive(item.path)
+                return <button key={item.path} type="button" onClick={() => navigate(item.path)} aria-current={active ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-medium ${active ? 'border-orange-200 bg-orange-50 text-[#e94b0a]' : 'border-gray-200 bg-white text-gray-600'}`}><MenuIcon type={item.icon} active={active} />{item.label}</button>
+            })}
+        </nav>
+        </>
     )
 }

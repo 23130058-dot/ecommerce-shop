@@ -3,6 +3,7 @@ package com.example.ecommerceshop.auth;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 
 public final class AuthDtos {
     private AuthDtos() {
@@ -33,6 +34,13 @@ public final class AuthDtos {
             String password
     ) {
     }
+
+    public record PhoneCodeRequest(@NotBlank @Size(max = 30) String phone) {}
+    public record PhoneLoginRequest(
+            @NotBlank @Size(max = 30) String phone,
+            @NotBlank @Pattern(regexp = "\\d{6}", message = "Mã đăng nhập gồm 6 chữ số.") String code
+    ) {}
+    public record PhoneCodeResponse(String phone, java.time.LocalDateTime expiresAt) {}
 
     public record AuthUserResponse(Long id, String fullName, String email, String role) {
     }

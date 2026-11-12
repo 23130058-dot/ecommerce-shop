@@ -29,7 +29,9 @@ public final class ProductReviewDtos {
             String comment,
             LocalDateTime createdAt,
             boolean verifiedRenter,
-            boolean sample
+            boolean sample,
+            String sentiment,
+            Double sentimentConfidence
     ) {
     }
 
@@ -40,6 +42,7 @@ public final class ProductReviewDtos {
             boolean canReview,
             boolean hasReviewed,
             List<ReviewResponse> reviews,
+            ReviewResponse myReview,
             int page,
             int size,
             int totalPages
