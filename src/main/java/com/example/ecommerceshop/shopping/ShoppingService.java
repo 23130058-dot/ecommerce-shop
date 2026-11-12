@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -309,6 +310,7 @@ public class ShoppingService {
                 SELECT COALESCE(SUM(ri.quantity), 0)::integer
                 FROM rentals r JOIN rental_items ri ON ri.rental_id = r.id
                 WHERE r.renter_id = ? AND UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')
+                  AND ri.start_date <= CURRENT_DATE
                 """, Integer.class, userId);
         Integer pendingReturns = jdbc.queryForObject("""
                 SELECT COUNT(*)::integer FROM rentals
@@ -381,6 +383,7 @@ public class ShoppingService {
                 ) image ON TRUE
                 WHERE r.renter_id = ?
                   AND UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')
+                  AND ri.start_date <= CURRENT_DATE
                 ORDER BY ri.start_date, r.created_at DESC, ri.id
                 """, (rs, rowNum) -> new CurrentRentalItem(
                 rs.getLong("rental_id"), rs.getString("rental_code"), rs.getString("rental_status"),
@@ -414,7 +417,7 @@ public class ShoppingService {
                 rs.getString("city"), rs.getString("contact_name"), rs.getString("contact_phone"),
                 rs.getString("contact_email"), rs.getString("payment_method"), rs.getString("payment_status"),
                 rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime(),
-                List.of()
+                List.of(), List.of()
         ), rentalId, userId);
         if (rentals.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
         RentalDetail rental = rentals.get(0);
@@ -423,7 +426,7 @@ public class ShoppingService {
                 rental.deliveryFee(), rental.deliveryMethod(),
                 rental.deliveryAddress(), rental.district(), rental.city(), rental.contactName(), rental.contactPhone(),
                 rental.contactEmail(), rental.paymentMethod(), rental.paymentStatus(), rental.createdAt(),
-                queryRentalItems(rental.rentalId()));
+                queryRentalItems(rental.rentalId()), queryRentalOwnerReviews(rental.rentalId(), userId));
     }
 
     @Transactional
@@ -431,14 +434,36 @@ public class ShoppingService {
         List<String> statuses=jdbc.query("SELECT status FROM rentals WHERE id=? AND renter_id=? FOR UPDATE",
                 (rs,n)->rs.getString(1),rentalId,userId);
         if(statuses.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy đơn thuê.");
-        List<Long> invalid=jdbc.query("""
-                SELECT id FROM rental_items WHERE rental_id=? AND
-                    (UPPER(COALESCE(status,'')) NOT IN ('PENDING','CONFIRMED') OR start_date<=CURRENT_DATE)
-                FOR UPDATE
-                """,(rs,n)->rs.getLong(1),rentalId);
-        if(!invalid.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Chỉ có thể hủy đơn trước ngày thuê khi tất cả thiết bị còn chờ hoặc đã xác nhận.");
-        List<Long> itemIds=jdbc.query("SELECT id FROM rental_items WHERE rental_id=? FOR UPDATE",(rs,n)->rs.getLong(1),rentalId);
-        if(itemIds.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn thuê không có thiết bị để hủy.");
+        List<RentalCancelItem> items=jdbc.query("""
+                SELECT id,status,(start_date > CURRENT_DATE) AS future_start FROM rental_items WHERE rental_id=? ORDER BY id FOR UPDATE
+                """,(rs,n)->new RentalCancelItem(rs.getLong("id"),rs.getString("status"),rs.getBoolean("future_start")),rentalId);
+        if(items.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn thuê không có thiết bị để hủy.");
+        if(items.stream().anyMatch(item -> !List.of("PENDING", "CONFIRMED", "ACTIVE", "IN_PROGRESS", "RENTING", "RETURN_PENDING")
+                .contains(item.status() == null ? "" : item.status().toUpperCase()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn đang ở trạng thái không thể yêu cầu hủy. Vui lòng tải lại trang để xem trạng thái mới nhất.");
+        }
+        boolean handedOver = items.stream().anyMatch(item -> List.of("ACTIVE", "IN_PROGRESS", "RENTING", "RETURN_PENDING")
+                .contains(item.status() == null ? "" : item.status().toUpperCase()));
+        if (handedOver) {
+            jdbc.update("UPDATE rental_items SET status='CANCEL_REQUESTED' WHERE rental_id=?",rentalId);
+            jdbc.update("UPDATE rentals SET status='CANCEL_REQUESTED' WHERE id=?",rentalId);
+            jdbc.update("""
+                    INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                    SELECT DISTINCT p.owner_id,'ORDER','Renter yêu cầu hủy đơn',
+                           'Đơn thuê '||r.rental_code||' đang chờ bạn xác nhận đã nhận lại thiết bị để hoàn tất hủy.',
+                           '/owner/bookings'
+                    FROM rentals r JOIN rental_items ri ON ri.rental_id=r.id JOIN products p ON p.id=ri.product_id
+                    WHERE r.id=?
+                    """,rentalId);
+            return;
+        }
+        boolean canCancelDirectly = items.stream().allMatch(item -> {
+            String status = item.status() == null ? "" : item.status().toUpperCase();
+            return status.equals("PENDING") || (status.equals("CONFIRMED") && item.futureStart());
+        });
+        if(!canCancelDirectly)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Đơn đã được xác nhận và lịch thuê đã bắt đầu. Nếu đã nhận thiết bị, hãy gửi yêu cầu hủy để Owner xác nhận nhận lại.");
+        List<Long> itemIds=items.stream().map(RentalCancelItem::id).toList();
         for(Long itemId:itemIds) {
             jdbc.update("UPDATE products p SET stock=COALESCE(stock,0)+ri.quantity FROM rental_items ri WHERE ri.id=? AND p.id=ri.product_id",itemId);
             jdbc.update("UPDATE rental_items SET status='CANCELLED' WHERE id=?",itemId);
@@ -449,6 +474,8 @@ public class ShoppingService {
         jdbc.update("INSERT INTO user_notifications(user_id,type,title,message,target_url) SELECT DISTINCT p.owner_id,'ORDER','Renter đã hủy đơn','Đơn thuê '||r.rental_code||' đã được hủy.','/owner/bookings' FROM rentals r JOIN rental_items ri ON ri.rental_id=r.id JOIN products p ON p.id=ri.product_id WHERE r.id=?",rentalId);
     }
 
+    private record RentalCancelItem(long id, String status, boolean futureStart) {}
+
     @Transactional
     public void requestReturn(long userId,long rentalId) {
         List<Long> items=jdbc.query("""
@@ -458,7 +485,8 @@ public class ShoppingService {
                 FOR UPDATE
                 """,(rs,n)->rs.getLong(1),rentalId,userId);
         if(items.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Chưa thể gửi yêu cầu trả. Thiết bị cần đến ngày bắt đầu thuê và đang ở trạng thái Đang thuê.");
-        for(Long itemId:items) jdbc.update("UPDATE rental_items SET status='RETURN_PENDING' WHERE id=?",itemId);
+        LocalDate returnRequestedDate=LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        for(Long itemId:items) jdbc.update("UPDATE rental_items SET status='RETURN_PENDING',return_requested_date=? WHERE id=?",returnRequestedDate,itemId);
         jdbc.update("INSERT INTO user_notifications(user_id,type,title,message,target_url) SELECT DISTINCT p.owner_id,'RETURN','Có yêu cầu trả thiết bị','Người thuê yêu cầu trả thiết bị cho đơn '||r.rental_code||'.','/owner/returns' FROM rentals r JOIN rental_items ri ON ri.rental_id=r.id JOIN products p ON p.id=ri.product_id WHERE r.id=?",rentalId);
         jdbc.update("UPDATE rentals SET status='RETURN_PENDING' WHERE id=?",rentalId);
     }
@@ -582,7 +610,14 @@ public class ShoppingService {
 
     private List<RentalSummary> queryRentalSummaries(long userId, int limit) {
         return jdbc.query("""
-                SELECT r.id AS rental_id, r.rental_code, r.status, r.total_amount, r.deposit_amount, r.created_at,
+                SELECT r.id AS rental_id, r.rental_code,
+                       CASE WHEN UPPER(COALESCE(r.status,'')) IN ('ACTIVE','IN_PROGRESS','RENTING')
+                                  AND NOT EXISTS (SELECT 1 FROM rental_items started
+                                                  WHERE started.rental_id=r.id
+                                                    AND UPPER(COALESCE(started.status,'')) IN ('ACTIVE','IN_PROGRESS','RENTING')
+                                                    AND started.start_date <= CURRENT_DATE)
+                            THEN 'HANDED_OVER' ELSE r.status END AS status,
+                       r.total_amount, r.deposit_amount, r.created_at,
                        COALESCE(item_count.item_count, 0)::integer AS item_count,
                        first_item.name AS first_product_name, first_item.image_key AS first_image_key
                 FROM rentals r
@@ -611,6 +646,8 @@ public class ShoppingService {
         return jdbc.query("""
                 SELECT ri.id rental_item_id,ri.product_id, p.name, COALESCE(image.image_url, '') AS image_key,
                        ri.quantity, ri.start_date, ri.end_date, ri.daily_price, ri.subtotal,
+                       COALESCE((SELECT SUM(tx.amount) FROM wallet_transactions tx
+                                 WHERE tx.type='RENTAL_REFUND' AND tx.reference_type='RENTAL_ITEM' AND tx.reference_id=ri.id),0) rental_refunded,
                        damage.description damage_description,damage.estimated_amount damage_amount,damage.status damage_status,
                        dispute.status dispute_status,settlement.refunded_amount deposit_refunded,
                        settlement.deducted_amount deposit_deducted,settlement.status deposit_status
@@ -626,11 +663,29 @@ public class ShoppingService {
                 """, (rs, rowNum) -> new RentalItemDetail(
                 rs.getLong("rental_item_id"),rs.getLong("product_id"), rs.getString("name"), rs.getString("image_key"), rs.getInt("quantity"),
                 rs.getObject("start_date", LocalDate.class), rs.getObject("end_date", LocalDate.class),
-                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal")),
+                zero(rs.getBigDecimal("daily_price")), zero(rs.getBigDecimal("subtotal")), zero(rs.getBigDecimal("rental_refunded")),
                 rs.getString("damage_description"),zero(rs.getBigDecimal("damage_amount")),rs.getString("damage_status"),
                 rs.getString("dispute_status"),zero(rs.getBigDecimal("deposit_refunded")),
                 zero(rs.getBigDecimal("deposit_deducted")),rs.getString("deposit_status")
         ), rentalId);
+    }
+
+    private List<RentalOwnerReview> queryRentalOwnerReviews(long rentalId, long renterId) {
+        return jdbc.query("""
+                SELECT rev.id,COALESCE(NULLIF(owner.full_name,''),owner.email,'Chủ thiết bị') owner_name,
+                       rev.rating,rev.communication_rating,rev.punctuality_rating,rev.care_rating,
+                       rev.equipment_condition,rev.comment,rev.is_public,rev.created_at
+                FROM reviews rev JOIN users owner ON owner.id=rev.user_id
+                WHERE rev.rental_id=? AND rev.reviewed_user_id=? AND rev.user_id IN (
+                    SELECT DISTINCT p.owner_id FROM rental_items ri JOIN products p ON p.id=ri.product_id
+                    WHERE ri.rental_id=?
+                )
+                ORDER BY rev.created_at DESC,rev.id DESC
+                """,(rs,n)->new RentalOwnerReview(rs.getLong("id"),rs.getString("owner_name"),rs.getObject("rating",Integer.class),
+                rs.getObject("communication_rating",Integer.class),rs.getObject("punctuality_rating",Integer.class),
+                rs.getObject("care_rating",Integer.class),rs.getString("equipment_condition"),rs.getString("comment"),
+                rs.getBoolean("is_public"),rs.getTimestamp("created_at")==null?null:rs.getTimestamp("created_at").toLocalDateTime()),
+                rentalId,renterId,rentalId);
     }
 
     private CartResponse calculateCart(List<ShoppingItemResponse> items, long userId) {

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.example.ecommerceshop.wallet.WalletService;
 
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -23,9 +24,11 @@ import java.time.temporal.ChronoUnit;
 @Service
 public class OwnerService {
     private final JdbcTemplate jdbc;
+    private final WalletService walletService;
 
-    public OwnerService(JdbcTemplate jdbc) {
+    public OwnerService(JdbcTemplate jdbc, WalletService walletService) {
         this.jdbc = jdbc;
+        this.walletService = walletService;
     }
 
     @Transactional(readOnly = true)
@@ -36,7 +39,7 @@ public class OwnerService {
                        p.deposit_amount, COALESCE(image.image_url, '') AS image_key,
                        COALESCE(p.stock, 0) AS available_quantity,
                        COALESCE(rented.quantity, 0)::integer AS rented_quantity,
-                       p.status, p.created_at
+                       p.status, p.created_at, p.review_reason
                 FROM products p
                 JOIN categories c ON c.id = p.category_id
                 LEFT JOIN brands b ON b.id = p.brand_id
@@ -61,7 +64,8 @@ public class OwnerService {
                 rs.getString("description"), rs.getString("tags"), rs.getBigDecimal("rating"),
                 rs.getBigDecimal("daily_price"), rs.getBigDecimal("deposit_amount"),
                 rs.getString("image_key"), rs.getInt("available_quantity"), rs.getInt("rented_quantity"),
-                rs.getString("status"), rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime()
+                rs.getString("status"), rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getString("review_reason")
         ), ownerId);
     }
 
@@ -130,7 +134,8 @@ public class OwnerService {
 
 
         String normalizedCurrentStatus = currentStatus == null ? "" : currentStatus.trim().toUpperCase(Locale.ROOT);
-        boolean awaitingApproval = List.of("PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL")
+        boolean rejected = "REJECTED".equals(normalizedCurrentStatus);
+        boolean awaitingApproval = List.of("PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL", "REJECTED")
                 .contains(normalizedCurrentStatus);
         String requestedStatus = request.status() == null || request.status().isBlank()
                 ? "ACTIVE" : request.status().trim().toUpperCase(Locale.ROOT);
@@ -138,7 +143,7 @@ public class OwnerService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái thiết bị không hợp lệ.");
         }
         // Owners can update a pending listing, but only an admin can publish it.
-        String status = awaitingApproval ? currentStatus : requestedStatus;
+        String status = rejected ? "PENDING" : awaitingApproval ? currentStatus : requestedStatus;
         if ("ACTIVE".equals(status) && !"ACTIVE".equalsIgnoreCase(currentStatus)) {
             requireVerifiedIdentity(ownerId);
         }
@@ -170,12 +175,13 @@ public class OwnerService {
         int changed = jdbc.update("""
                 UPDATE products
                 SET category_id = ?, brand_id = ?, name = ?, description = ?, daily_price = ?,
-                    deposit_amount = ?, stock = ?, status = ?, item_type = ?, tags = ?
+                    deposit_amount = ?, stock = ?, status = ?, item_type = ?, tags = ?,
+                    review_reason = CASE WHEN ?='PENDING' THEN NULL ELSE review_reason END
                 WHERE id = ? AND owner_id = ?
                 """, categoryIds.get(0), brandId, request.name().trim(),
                 request.description() == null ? "" : request.description().trim(), request.dailyPrice(),
                 request.depositAmount() == null ? BigDecimal.ZERO : request.depositAmount(),
-                request.quantity(), status, itemType, tags, productId, ownerId);
+                request.quantity(), status, itemType, tags, status, productId, ownerId);
         if (changed == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thiết bị của bạn.");
         }
@@ -248,7 +254,9 @@ public class OwnerService {
                     GROUP BY rental_id
                 ), owner_daily AS (
                     SELECT paid_rentals.paid_at::date AS revenue_date,
-                           COALESCE(SUM(ri.subtotal), 0) AS amount
+                           COALESCE(SUM(GREATEST(ri.subtotal-COALESCE((SELECT SUM(tx.amount) FROM wallet_transactions tx
+                                                                       WHERE tx.type='RENTAL_REFUND' AND tx.reference_type='RENTAL_ITEM'
+                                                                         AND tx.reference_id=ri.id),0),0)), 0) AS amount
                     FROM paid_rentals
                     JOIN rental_items ri ON ri.rental_id = paid_rentals.rental_id
                     JOIN products p ON p.id = ri.product_id
@@ -272,7 +280,10 @@ public class OwnerService {
                 )
                 SELECT p.id AS product_id, p.name, p.item_type AS type,
                        COALESCE(image.image_url, '') AS image_key, p.daily_price,
-                       COALESCE(SUM(CASE WHEN paid_rentals.rental_id IS NOT NULL AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED' THEN ri.subtotal ELSE 0 END), 0) AS amount,
+                       COALESCE(SUM(CASE WHEN paid_rentals.rental_id IS NOT NULL AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
+                           THEN GREATEST(ri.subtotal-COALESCE((SELECT SUM(tx.amount) FROM wallet_transactions tx
+                               WHERE tx.type='RENTAL_REFUND' AND tx.reference_type='RENTAL_ITEM' AND tx.reference_id=ri.id),0),0)
+                           ELSE 0 END), 0) AS amount,
                        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(ri.status,'')) <> 'CANCELLED' THEN paid_rentals.rental_id END) AS paid_rental_count
                 FROM products p
                 LEFT JOIN rental_items ri ON ri.product_id = p.id
@@ -318,7 +329,10 @@ public class OwnerService {
                        COALESCE(SUM(ri.subtotal), 0) AS rental_amount,
                        COALESCE(SUM(p.deposit_amount * ri.quantity), 0) AS deposit_amount,
                        CASE
+                           WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) IN ('CANCELLED','CANCELED')) THEN 'CANCELLED'
                            WHEN BOOL_AND(UPPER(COALESCE(ri.status, r.status, '')) = 'COMPLETED') THEN 'COMPLETED'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, '')) = 'CANCEL_REQUESTED') THEN 'CANCEL_REQUESTED'
+                           WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('RETURN_PENDING','RETURN_REQUESTED','AWAITING_RETURN','DAMAGE_REPORTED')) THEN 'RETURN_PENDING'
                            WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'PENDING') THEN 'PENDING'
                            WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) = 'CONFIRMED') THEN 'CONFIRMED'
                            WHEN BOOL_OR(UPPER(COALESCE(ri.status, r.status, '')) IN ('ACTIVE', 'IN_PROGRESS', 'RENTING')) THEN 'ACTIVE'
@@ -333,7 +347,7 @@ public class OwnerService {
                 LEFT JOIN LATERAL (
                     SELECT status FROM payments WHERE rental_id = r.id ORDER BY id DESC LIMIT 1
                 ) payment ON TRUE
-                WHERE p.owner_id = ? AND UPPER(COALESCE(ri.status,'')) <> 'CANCELLED'
+                WHERE p.owner_id = ?
                 GROUP BY r.id, r.rental_code, u.id, u.full_name, u.phone, r.contact_phone,
                          payment.status, r.created_at
                 ORDER BY r.created_at DESC, r.id DESC
@@ -433,6 +447,70 @@ public class OwnerService {
                 FROM rentals WHERE id = ?
                 """, rentalId);
     }
+
+    @Transactional
+    public void confirmCancellationReturn(long ownerId, long rentalId) {
+        jdbc.query("SELECT id FROM rentals WHERE id=? FOR UPDATE", (rs, n) -> rs.getLong(1), rentalId);
+        List<CancelReturnItem> items = jdbc.query("""
+                SELECT ri.id,ri.quantity,ri.subtotal,p.deposit_amount
+                FROM rental_items ri JOIN products p ON p.id=ri.product_id
+                WHERE ri.rental_id=? AND p.owner_id=? AND UPPER(COALESCE(ri.status,''))='CANCEL_REQUESTED'
+                ORDER BY ri.id FOR UPDATE OF ri
+                """, (rs, n) -> new CancelReturnItem(rs.getLong("id"), rs.getInt("quantity"),
+                rs.getBigDecimal("subtotal"), rs.getBigDecimal("deposit_amount")), rentalId, ownerId);
+        if (items.isEmpty()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Không còn thiết bị đang chờ xác nhận hủy trong đơn này.");
+
+        BigDecimal oldTotal = jdbc.queryForObject("SELECT total_amount FROM rentals WHERE id=?", BigDecimal.class, rentalId);
+        String deliveryMethod = jdbc.queryForObject("SELECT delivery_method FROM rentals WHERE id=?", String.class, rentalId);
+        BigDecimal cancelledDeposit = items.stream().map(item -> zero(item.depositAmount()).multiply(BigDecimal.valueOf(item.quantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        for (CancelReturnItem item : items) {
+            jdbc.update("UPDATE products p SET stock=COALESCE(p.stock,0)+? WHERE p.id=(SELECT product_id FROM rental_items WHERE id=?)",
+                    item.quantity(), item.id());
+            jdbc.update("UPDATE rental_items SET status='CANCELLED' WHERE id=?", item.id());
+        }
+
+        BigDecimal remainingRent = money("SELECT COALESCE(SUM(subtotal),0) FROM rental_items WHERE rental_id=? AND status<>'CANCELLED'", rentalId);
+        BigDecimal remainingDeposit = money("SELECT COALESCE(SUM(p.deposit_amount*ri.quantity),0) FROM rental_items ri JOIN products p ON p.id=ri.product_id WHERE ri.rental_id=? AND ri.status<>'CANCELLED'", rentalId);
+        int remainingItems = jdbc.queryForObject("SELECT COUNT(*) FROM rental_items WHERE rental_id=? AND status<>'CANCELLED'", Integer.class, rentalId);
+        BigDecimal serviceFee = remainingRent.multiply(new BigDecimal("0.05")).setScale(0, java.math.RoundingMode.HALF_UP);
+        BigDecimal deliveryFee = remainingItems > 0 && "HOME".equalsIgnoreCase(deliveryMethod) ? new BigDecimal("50000") : BigDecimal.ZERO;
+        BigDecimal newTotal = remainingRent.add(remainingDeposit).add(serviceFee).add(deliveryFee);
+        jdbc.update("""
+                UPDATE rentals SET total_amount=?,deposit_amount=?,service_fee=?,delivery_fee=?,status=CASE
+                    WHEN ?=0 THEN 'CANCELLED'
+                    WHEN EXISTS(SELECT 1 FROM rental_items WHERE rental_id=? AND status='CANCEL_REQUESTED') THEN 'CANCEL_REQUESTED'
+                    WHEN EXISTS(SELECT 1 FROM rental_items WHERE rental_id=? AND status IN ('ACTIVE','IN_PROGRESS','RENTING')) THEN 'ACTIVE'
+                    WHEN EXISTS(SELECT 1 FROM rental_items WHERE rental_id=? AND status='CONFIRMED') THEN 'CONFIRMED'
+                    ELSE 'PENDING' END WHERE id=?
+                """, newTotal, remainingDeposit, serviceFee, deliveryFee, remainingItems,
+                rentalId, rentalId, rentalId, rentalId);
+        jdbc.update("UPDATE payments SET amount=? WHERE rental_id=? AND status IN ('PAID','SUCCESS','COMPLETED')", newTotal, rentalId);
+        BigDecimal refundRent = oldTotal.subtract(newTotal).subtract(cancelledDeposit).max(BigDecimal.ZERO);
+        walletService.refundCancelledItems(rentalId, items.get(0).id(), refundRent, cancelledDeposit);
+        if (remainingItems == 0) {
+            jdbc.update("UPDATE payments SET status='REFUNDED' WHERE rental_id=? AND status IN ('PAID','SUCCESS','COMPLETED')", rentalId);
+            jdbc.update("UPDATE payments SET status='CANCELLED' WHERE rental_id=? AND status='UNPAID'", rentalId);
+        }
+        jdbc.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                SELECT renter_id,'ORDER',
+                       CASE WHEN ?=0 THEN 'Đơn thuê đã được hủy' ELSE 'Owner đã xác nhận nhận lại thiết bị' END,
+                       CASE WHEN ?=0 THEN 'Owner xác nhận thiết bị đã về tay mình. Đơn đã hủy và khoản hoàn tiền đã được xử lý.'
+                            ELSE 'Owner đã xác nhận nhận lại thiết bị. Các Owner còn lại cần xác nhận trước khi hoàn tất hủy đơn.' END,
+                       '/renter/orders/'||id
+                FROM rentals WHERE id=?
+                """, remainingItems, remainingItems, rentalId);
+    }
+
+    private record CancelReturnItem(long id, int quantity, BigDecimal subtotal, BigDecimal depositAmount) {}
+
+    private BigDecimal money(String sql, Object... args) {
+        BigDecimal value = jdbc.queryForObject(sql, BigDecimal.class, args);
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal zero(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
 
     @Transactional
     public void completeBooking(long ownerId, long rentalId) {

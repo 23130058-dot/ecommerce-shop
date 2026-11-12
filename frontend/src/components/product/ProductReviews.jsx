@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getAvatarSource } from '../../services/avatarUrl.js'
-import { createProductReview, getProductReviews } from '../../services/productReviewApi.js'
+import { createProductReview, getProductReviews, updateProductReview } from '../../services/productReviewApi.js'
 import { showToast } from '../../services/toast.js'
 
 function initials(name) {
@@ -21,6 +21,7 @@ export default function ProductReviews({ productId, isSignedIn, onNeedSignIn, on
   const [error, setError] = useState('')
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
+  const [editingReviewId, setEditingReviewId] = useState(null)
   const [page, setPage] = useState(0)
 
   const load = useCallback(async (nextPage = 0, signal) => {
@@ -53,10 +54,12 @@ export default function ProductReviews({ productId, isSignedIn, onNeedSignIn, on
     setSubmitting(true)
     setError('')
     try {
-      await createProductReview(productId, { rating, comment: comment.trim() })
+      if (editingReviewId) await updateProductReview(productId, editingReviewId, { rating, comment: comment.trim() })
+      else await createProductReview(productId, { rating, comment: comment.trim() })
       setComment('')
       setRating(5)
-      showToast('Đánh giá của bạn đã được gửi.', 'success')
+      setEditingReviewId(null)
+      showToast(editingReviewId ? 'Đã cập nhật đánh giá của bạn.' : 'Đánh giá của bạn đã được gửi.', 'success')
       await load(0)
     } catch (submitError) {
       setError(submitError.message)
@@ -100,9 +103,11 @@ export default function ProductReviews({ productId, isSignedIn, onNeedSignIn, on
 
       {error && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700" role="alert">{error}</p>}
 
-      {isSignedIn && data?.canReview && (
+      {isSignedIn && data?.myReview && !editingReviewId && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-emerald-50 p-3"><p className="text-sm text-emerald-800">Bạn đã gửi đánh giá cho thiết bị này.</p><button type="button" onClick={() => { setRating(data.myReview.rating || 5); setComment(data.myReview.comment || ''); setEditingReviewId(data.myReview.id) }} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">Chỉnh sửa đánh giá</button></div>}
+
+      {isSignedIn && (data?.canReview || editingReviewId) && (
         <form className="mt-5 rounded-xl bg-gray-50 p-4 sm:p-5" onSubmit={submit}>
-          <p className="text-sm font-semibold text-gray-800">Chia sẻ trải nghiệm thuê thiết bị</p>
+          <p className="text-sm font-semibold text-gray-800">{editingReviewId ? 'Chỉnh sửa đánh giá của bạn' : 'Chia sẻ trải nghiệm thuê thiết bị'}</p>
           <div aria-label="Chọn số sao" className="mt-2 flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((value) => (
               <button aria-label={`${value} sao`} aria-pressed={rating === value} className={`text-3xl leading-none transition ${value <= rating ? 'text-amber-400' : 'text-gray-300'}`} key={value} onClick={() => setRating(value)} type="button">★</button>
@@ -115,12 +120,12 @@ export default function ProductReviews({ productId, isSignedIn, onNeedSignIn, on
           </label>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <span className="text-xs text-gray-400">{comment.length}/2000 ký tự</span>
-            <button className="rounded-lg bg-[#ff5500] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting || !comment.trim()} type="submit">{submitting ? 'Đang gửi…' : 'Gửi đánh giá'}</button>
+            <div className="flex gap-2">{editingReviewId && <button className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600" disabled={submitting} onClick={() => { setEditingReviewId(null); setComment(''); setRating(5) }} type="button">Hủy</button>}<button className="rounded-lg bg-[#ff5500] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting || !comment.trim()} type="submit">{submitting ? 'Đang lưu…' : editingReviewId ? 'Lưu chỉnh sửa' : 'Gửi đánh giá'}</button></div>
           </div>
         </form>
       )}
 
-      {isSignedIn && data?.hasReviewed && <p className="mt-5 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Tài khoản của bạn đã gửi đánh giá cho thiết bị này.</p>}
+      {isSignedIn && data?.hasReviewed && !data?.myReview && <p className="mt-5 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Tài khoản của bạn đã gửi đánh giá cho thiết bị này.</p>}
       {isSignedIn && data && !data.canReview && !data.hasReviewed && <p className="mt-5 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Bạn có thể đánh giá sau khi hoàn tất đơn thuê thiết bị này.</p>}
       {!isSignedIn && <button className="mt-5 rounded-lg border border-orange-200 px-4 py-2.5 text-sm font-semibold text-[#ed4b0a] transition hover:bg-orange-50" onClick={onNeedSignIn} type="button">Đăng nhập để đánh giá</button>}
 
@@ -134,6 +139,7 @@ export default function ProductReviews({ productId, isSignedIn, onNeedSignIn, on
                   <span className="font-semibold text-gray-800">{review.reviewerName}</span>
                   {review.verifiedRenter && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Đã thuê</span>}
                   {review.sample && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">Dữ liệu mẫu</span>}
+                  {review.sentiment && <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${review.sentiment === 'POSITIVE' ? 'bg-emerald-50 text-emerald-700' : review.sentiment === 'NEGATIVE' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`} title={`Mô hình dự đoán độ tin cậy ${Math.round((review.sentimentConfidence || 0) * 100)}%`}>Cảm xúc: {review.sentiment === 'POSITIVE' ? 'Tích cực' : review.sentiment === 'NEGATIVE' ? 'Tiêu cực' : 'Trung tính'}</span>}
                   <time className="ml-auto text-xs text-gray-400" dateTime={review.createdAt}>{formatDate(review.createdAt)}</time>
                 </div>
                 <p aria-label={`${review.rating} trên 5 sao`} className="mt-1 text-sm tracking-wide text-amber-500">{'★'.repeat(Number(review.rating) || 0)}<span className="text-gray-200">{'★'.repeat(5 - (Number(review.rating) || 0))}</span></p>

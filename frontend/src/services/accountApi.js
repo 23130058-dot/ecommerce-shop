@@ -39,15 +39,19 @@ export const updateNotificationPreferences = (preferences) => request('/notifica
 })
 
 export const getAccountWallet = () => request('/wallet')
-export const topUpAccountWallet = ({ amount, simulatedResult }) => request('/wallet/top-ups', {
+export const withdrawFromWallet = ({ amount }) => request('/wallet/withdrawals', {
   method: 'POST',
-  body: { amount, simulatedResult },
+  body: { amount: Number(amount) },
 })
-export const withdrawAccountWallet = ({ amount, simulatedResult }) => request('/wallet/withdrawals', {
+export const topUpAccountWallet = ({ amount }) => request('/wallet/top-ups/zalopay', {
   method: 'POST',
-  body: { amount, simulatedResult },
+  body: { amount },
 })
-
+export const getZaloPayWalletTopUpStatus = (appTransId) => request(`/wallet/top-ups/zalopay/${encodeURIComponent(appTransId)}`)
+export const confirmZaloPayWalletTopUp = (redirect) => request('/wallet/top-ups/zalopay/redirect', {
+  method: 'POST',
+  body: redirect,
+})
 export const getAccountVerification = () => request('/verification')
 export const requestPhoneVerificationCode = (phone) => request('/verification/phone-code', {
   method: 'POST',

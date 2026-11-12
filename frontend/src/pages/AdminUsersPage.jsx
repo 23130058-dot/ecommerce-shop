@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AdminLayout, { AdminIcon } from '../components/admin/AdminLayout.jsx'
 import DataTable from '../components/shared/DataTable.jsx'
-import { getAdminUsers, updateAdminUserRole, updateAdminUserStatus } from '../services/adminApi.js'
+import { createAdminUser, getAdminUsers, updateAdminUser, updateAdminUserRole, updateAdminUserStatus } from '../services/adminApi.js'
 
 function StatusBadge({ status }) {
   const active = status === 'active'
@@ -30,7 +30,7 @@ function mapUser(user) {
   }
 }
 
-function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
+function DetailModal({ user, onClose, onEdit, onRoleChange, savingRole, roleError }) {
   const [role, setRole] = useState(user?.role || 'USER')
   if (!user) return null
   return (
@@ -51,10 +51,30 @@ function DetailModal({ user, onClose, onRoleChange, savingRole, roleError }) {
         </dl>
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Vai trò mới có hiệu lực sau khi người dùng đăng nhập lại. Không thể tự đổi quyền tài khoản Admin đang sử dụng.</p>
         {roleError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{roleError}</p>}
-        <div className="mt-5 flex justify-end"><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Đóng</button></div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => { onClose(); onEdit(user) }} className="rounded-lg border border-orange-200 px-4 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50">Sửa thông tin</button><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Đóng</button></div>
       </section>
     </div>
   )
+}
+
+function UserEditorModal({ user, busy, error, onClose, onSave }) {
+  const [form, setForm] = useState(() => ({ fullName: user?.fullName || user?.name || '', email: user?.email || '', phone: user?.phone === '—' ? '' : user?.phone || '', role: user?.role?.toUpperCase() || 'USER', status: user?.status === 'locked' ? 'LOCKED' : 'ACTIVE', password: '' }))
+  if (!user && user !== null) return null
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <form role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); onSave(form) }} className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
+      <div className="flex items-start justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-wider text-[#f45116]">Quản lý tài khoản</p><h2 className="mt-1 text-lg font-bold text-gray-900">{user?.id ? 'Sửa người dùng' : 'Thêm người dùng'}</h2></div><button type="button" onClick={onClose} aria-label="Đóng" className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"><AdminIcon name="close" /></button></div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Họ và tên<input required maxLength={160} value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-normal" /></label>
+        <label className="text-xs font-semibold text-gray-600">Email<input required type="email" maxLength={254} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-normal" /></label>
+        <label className="text-xs font-semibold text-gray-600">Số điện thoại<input maxLength={40} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-normal" /></label>
+        {!user?.id && <label className="text-xs font-semibold text-gray-600 sm:col-span-2">Mật khẩu tạm thời<input required type="password" minLength={8} maxLength={100} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-normal" /><span className="mt-1 block font-normal text-gray-400">Ít nhất 8 ký tự.</span></label>}
+        <label className="text-xs font-semibold text-gray-600">Vai trò<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal"><option value="USER">User</option><option value="ADMIN">Admin</option></select></label>
+        <label className="text-xs font-semibold text-gray-600">Trạng thái<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal"><option value="ACTIVE">Hoạt động</option><option value="LOCKED">Đã khóa</option></select></label>
+      </div>
+      {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+      <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-600">Hủy</button><button disabled={busy} className="rounded-lg bg-[#f45116] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">{busy ? 'Đang lưu…' : user?.id ? 'Lưu thay đổi' : 'Tạo tài khoản'}</button></div>
+    </form>
+  </div>
 }
 
 function exportUsersCsv(users) {
@@ -82,6 +102,9 @@ export default function AdminUsersPage() {
   const [updatingId, setUpdatingId] = useState(null)
   const [savingRole, setSavingRole] = useState(false)
   const [roleError, setRoleError] = useState('')
+  const [userEditor, setUserEditor] = useState(undefined)
+  const [userEditorBusy, setUserEditorBusy] = useState(false)
+  const [userEditorError, setUserEditorError] = useState('')
   const [error, setError] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
   const pageSize = 10
@@ -157,6 +180,19 @@ export default function AdminUsersPage() {
     }
   }
 
+  const saveUser = async (form) => {
+    setUserEditorBusy(true)
+    setUserEditorError('')
+    try {
+      if (userEditor?.id) await updateAdminUser(userEditor.id, { fullName: form.fullName, email: form.email, phone: form.phone, role: form.role, status: form.status })
+      else await createAdminUser(form)
+      setUserEditor(undefined)
+      setSelectedUser(null)
+      setRefreshVersion((current) => current + 1)
+    } catch (requestError) { setUserEditorError(requestError.message) }
+    finally { setUserEditorBusy(false) }
+  }
+
   const visibleUsers = users
   const columns = [
     { key: 'name', header: 'Người dùng', className: 'min-w-[220px]', render: (user) => <div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[11px] font-bold text-[#e94b0a]">{user.name.split(' ').slice(-2).map((part) => part[0]).join('')}</span><div className="min-w-0"><p className="text-xs font-semibold text-gray-800">{user.name}</p><p className="mt-0.5 text-[11px] text-gray-400">{user.email}</p><p className="mt-0.5 text-[10px] text-gray-300">{user.code}</p></div></div> },
@@ -164,7 +200,7 @@ export default function AdminUsersPage() {
     { key: 'joined', header: 'Ngày tham gia', className: 'whitespace-nowrap' },
     { key: 'rentals', header: 'Đơn thuê' },
     { key: 'status', header: 'Trạng thái', render: (user) => <StatusBadge status={user.status} /> },
-    { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[210px] whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap text-right', render: (user) => <div className="flex flex-nowrap items-center justify-end gap-2"><button type="button" onClick={() => setSelectedUser(user)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"><AdminIcon name="eye" className="size-3.5" />Chi tiết</button><button type="button" disabled={updatingId === user.id} onClick={() => toggleStatus(user)} className={`whitespace-nowrap rounded-md border px-2.5 py-1.5 text-[10px] font-semibold disabled:cursor-wait disabled:opacity-50 ${user.status === 'active' ? 'border-rose-100 text-rose-600 hover:bg-rose-50' : 'border-emerald-100 text-emerald-700 hover:bg-emerald-50'}`}>{updatingId === user.id ? 'Đang lưu…' : user.status === 'active' ? 'Khóa' : 'Mở khóa'}</button></div> },
+    { key: 'actions', header: 'Thao tác', searchable: false, sortable: false, className: 'min-w-[230px] whitespace-nowrap text-right', cellClassName: 'whitespace-nowrap text-right', render: (user) => <div className="flex flex-nowrap items-center justify-end gap-2"><button type="button" onClick={() => setSelectedUser(user)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"><AdminIcon name="eye" className="size-3.5" />Chi tiết</button><button type="button" onClick={() => { setUserEditor(user); setUserEditorError('') }} className="whitespace-nowrap rounded-md border border-orange-200 px-2.5 py-1.5 text-[10px] font-semibold text-orange-700 hover:bg-orange-50">Sửa</button><button type="button" disabled={updatingId === user.id} onClick={() => toggleStatus(user)} className={`whitespace-nowrap rounded-md border px-2.5 py-1.5 text-[10px] font-semibold disabled:cursor-wait disabled:opacity-50 ${user.status === 'active' ? 'border-rose-100 text-rose-600 hover:bg-rose-50' : 'border-emerald-100 text-emerald-700 hover:bg-emerald-50'}`}>{updatingId === user.id ? 'Đang lưu…' : user.status === 'active' ? 'Khóa' : 'Mở khóa'}</button></div> },
   ]
 
   return (
@@ -175,6 +211,7 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap items-center gap-2"><h1 className="text-[22px] font-bold tracking-tight text-[#1f2937] sm:text-[24px]">Quản lý người dùng</h1></div>
             <p className="mt-1 text-[11px] leading-5 text-gray-500 sm:text-xs">Theo dõi tài khoản, vai trò và trạng thái hoạt động trên LensRent.</p>
           </div>
+          <button type="button" onClick={() => { setUserEditor(null); setUserEditorError('') }} className="inline-flex h-9 w-fit items-center gap-2 rounded-lg bg-[#f45116] px-3.5 text-[11px] font-semibold text-white shadow-sm hover:bg-[#df4610]">+ Thêm người dùng</button>
           <button type="button" onClick={() => exportUsersCsv(users)} disabled={loading || users.length === 0} className="inline-flex h-9 w-fit items-center gap-2 rounded-lg bg-[#f45116] px-3.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#df4610] disabled:cursor-not-allowed disabled:opacity-50"><AdminIcon name="download" className="size-3.5" />Xuất danh sách trang này</button>
         </div>
 
@@ -199,7 +236,8 @@ export default function AdminUsersPage() {
         </section>
         <p className="mb-1 mt-4 text-center text-[10px] text-gray-400">Dữ liệu người dùng và thao tác trạng thái được lấy từ PostgreSQL.</p>
       </main>
-      <DetailModal key={selectedUser?.id || 'closed'} user={selectedUser} savingRole={savingRole} roleError={roleError} onRoleChange={changeRole} onClose={() => setSelectedUser(null)} />
+      <DetailModal key={selectedUser?.id || 'closed'} user={selectedUser} savingRole={savingRole} roleError={roleError} onRoleChange={changeRole} onEdit={(user) => { setUserEditor(user); setUserEditorError('') }} onClose={() => setSelectedUser(null)} />
+      {userEditor !== undefined && <UserEditorModal key={userEditor?.id || 'new'} user={userEditor} busy={userEditorBusy} error={userEditorError} onClose={() => setUserEditor(undefined)} onSave={saveUser} />}
     </AdminLayout>
   )
 }

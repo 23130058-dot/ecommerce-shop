@@ -36,11 +36,24 @@ function ReportForm({ ownerId, productId, onClose }) {
       onClose()
     } catch (error) { showToast(error.message, 'error') } finally { setBusy(false) }
   }
-  return <form onSubmit={submit} className="mt-3 grid gap-2 rounded-xl border border-orange-100 bg-orange-50 p-3 sm:grid-cols-[190px_1fr_auto]">
-    <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"><option>Thông tin không chính xác</option><option>Nội dung vi phạm</option><option>Gian hàng đáng ngờ</option><option>Sản phẩm giả mạo</option><option>Khác</option></select>
-    <input required maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Mô tả lý do báo cáo…" className="min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-    <div className="flex gap-2"><button disabled={busy} className="rounded-lg bg-[#ff5500] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? 'Đang gửi…' : 'Gửi báo cáo'}</button><button type="button" onClick={onClose} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">Đóng</button></div>
-  </form>
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <form role="dialog" aria-modal="true" aria-labelledby="store-report-title" onSubmit={submit} className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl">
+      <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
+        <div><p className="text-[11px] font-bold uppercase tracking-wider text-orange-600">LensRent · Kiểm duyệt cộng đồng</p><h2 id="store-report-title" className="mt-1 text-lg font-bold text-gray-900">{productId ? 'Báo cáo sản phẩm' : 'Báo cáo gian hàng'}</h2><p className="mt-1 text-xs leading-5 text-gray-500">Thông tin sẽ được gửi đến Admin để xem xét.</p></div>
+        <button type="button" onClick={onClose} aria-label="Đóng hộp thoại" className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700">✕</button>
+      </div>
+      <div className="grid gap-4 px-5 py-5 sm:px-6">
+        <label className="block text-sm font-semibold text-gray-700">Lý do báo cáo
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"><option>Thông tin không chính xác</option><option>Nội dung vi phạm</option><option>Gian hàng đáng ngờ</option><option>Sản phẩm giả mạo</option><option>Khác</option></select>
+        </label>
+        <label className="block text-sm font-semibold text-gray-700">Mô tả chi tiết
+          <textarea required maxLength={2000} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Cho biết vấn đề bạn gặp phải…" className="mt-1.5 block w-full resize-y rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-normal outline-none placeholder:text-gray-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+          <span className="mt-1 block text-right text-[11px] font-normal text-gray-400">{description.length}/2000 ký tự</span>
+        </label>
+      </div>
+      <div className="flex justify-end gap-2 border-t border-gray-100 bg-gray-50/70 px-5 py-4 sm:px-6"><button type="button" onClick={onClose} className="min-h-10 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">Đóng</button><button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#ff5500] px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Đang gửi…' : 'Gửi báo cáo'}</button></div>
+    </form>
+  </div>
 }
 
 export default function StoresPage() {

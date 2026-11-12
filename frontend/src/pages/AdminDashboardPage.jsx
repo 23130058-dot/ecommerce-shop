@@ -1,24 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import brandMark from '../assets/lensrent/brand-mark.svg'
-import AccountAvatar from '../components/layout/AccountAvatar.jsx'
-import Footer from '../components/layout/Footer.jsx'
+import AdminLayout, { AdminIcon } from '../components/admin/AdminLayout.jsx'
 import { getAdminDashboard, getAdminRevenueTrend } from '../services/adminApi.js'
-import useCurrentAccount from '../hooks/useCurrentAccount.js'
-
-const adminLinks = [
-  { label: 'Tổng quan', icon: 'grid', active: true, to: '/admin' },
-  { label: 'Quản lý người dùng', icon: 'users', to: '/admin/users' },
-  { label: 'Quản lý sản phẩm', icon: 'camera', to: '/admin/products' },
-  { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
-  { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes' },
-  { label: 'Xác minh tài khoản', icon: 'shield', to: '/admin/verifications' },
-]
-
-const systemLinks = [
-  { label: 'Bảo mật & Phân quyền', icon: 'shield', disabled: true },
-  { label: 'Cấu hình hệ thống', icon: 'settings', disabled: true },
-]
 
 function formatMoney(value) {
   if (value === null || value === undefined) return '—'
@@ -60,37 +43,6 @@ function mapActivity(activity) {
   }
 }
 
-function AdminIcon({ name, className = 'size-4' }) {
-  const common = {
-    className,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.8,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': true,
-  }
-
-  const paths = {
-    grid: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
-    users: <><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20" /><circle cx="10" cy="7" r="3.5" /><path d="M16 4.2a3.5 3.5 0 0 1 0 6.6M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35" /></>,
-    camera: <><path d="M4 7.5h3l1.4-2h7.2l1.4 2h3A1.5 1.5 0 0 1 21.5 9v9a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18V9A1.5 1.5 0 0 1 4 7.5Z" /><circle cx="12" cy="13.5" r="3.2" /></>,
-    message: <><path d="M20.5 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3.5 2v-7.5a7.5 7.5 0 1 1 18  -2Z" /><path d="M8 11.5h8M8 14.5h5" /></>,
-    shield: <><path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3Z" /><path d="m9 12 2 2 4-4" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.6.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.6-.9l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.9L6.7 12l1.4-2.4 1.7.7a8 8 0 0 1 1.6-.9l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.6.9l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 1.9Z" transform="translate(-1.7 -1.5)" /></>,
-    check: <path d="m5 12 4.5 4.5L19 7" />,
-    chat: <><path d="M20.5 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3.5 2v-7.5a7.5 7.5 0 1 1 18 -2Z" /><path d="M8 11.5h8M8 14.5h5" /></>,
-    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 1 1 8 0v3" /></>,
-    alert: <><path d="m10.3 3.7-8 14A1.5 1.5 0 0 0 3.6 20h16.8a1.5 1.5 0 0 0 1.3-2.3l-8-14a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 16.5h.01" /></>,
-    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
-    download: <><path d="M12 3v11m0 0 4-4m-4 4-4-4" /><path d="M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" /></>,
-    external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" /></>,
-  }
-
-  return <svg {...common}>{paths[name] || paths.grid}</svg>
-}
-
 function StatCard({ title, value, note, icon, color = 'orange' }) {
   const colorClasses = {
     orange: 'bg-orange-50 text-[#f45116]',
@@ -127,6 +79,7 @@ function RevenueLineChart({ rows, metric }) {
     y: plot.top + plotHeight - (row[metric] / max) * plotHeight,
     row,
   }))
+  const labelStep = Math.max(1, Math.ceil(points.length / 8))
   const polyline = points.map((point) => `${point.x},${point.y}`).join(' ')
   const areaPath = `${plot.left},${plot.top + plotHeight} ${polyline} ${plot.left + plotWidth},${plot.top + plotHeight}`
   const formatAxis = (value) => metric === 'revenue' ? `${value}tr` : value.toLocaleString('vi-VN')
@@ -150,10 +103,10 @@ function RevenueLineChart({ rows, metric }) {
       })}
       <polygon points={areaPath} fill="url(#revenue-area)" />
       <polyline points={polyline} fill="none" stroke="#f45116" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      {points.map(({ x, y, row }) => (
+      {points.map(({ x, y, row }, index) => (
         <g key={row.month}>
-          <circle cx={x} cy={y} r="4.5" fill="white" stroke="#f45116" strokeWidth="2.5"><title>{`${row.month}: ${metric === 'revenue' ? `${row.revenue} triệu đồng` : `${row.rentals} lượt thuê`}`}</title></circle>
-          <text x={x} y={height - 7} textAnchor="middle" fill="#98a2b3" fontSize="10">{row.month}</text>
+          <circle cx={x} cy={y} r="3.5" fill="white" stroke="#f45116" strokeWidth="2"><title>{`${row.month}: ${metric === 'revenue' ? `${row.revenue} triệu đồng` : `${row.rentals} lượt thuê`}`}</title></circle>
+          {(index % labelStep === 0 || index === points.length - 1) && <text x={x} y={height - 7} textAnchor="middle" fill="#98a2b3" fontSize="10">{row.month}</text>}
         </g>
       ))}
     </svg>
@@ -247,17 +200,7 @@ function exportDashboardCsv(categoryRevenue) {
   URL.revokeObjectURL(url)
 }
 
-function SidebarLink({ item }) {
-  const className = `flex min-h-9 items-center gap-3 rounded-lg px-3 text-[12px] transition ${item.active ? 'bg-orange-50 font-semibold text-[#e94b0a]' : item.disabled ? 'cursor-default text-gray-400' : 'text-gray-600 hover:bg-gray-50'}`
-  const contents = <><AdminIcon name={item.icon} className="size-4 shrink-0" /><span className="truncate">{item.label}</span></>
-  if (item.disabled) return <span className={className} title="Mục này sẽ được triển khai sau">{contents}</span>
-  return <Link to={item.to} aria-current={item.active ? 'page' : undefined} className={className}>{contents}</Link>
-}
-
 export default function AdminDashboardPage() {
-  const { auth } = useCurrentAccount()
-  const admin = auth?.user
-  const adminName = admin?.fullName || admin?.email || 'Quản trị viên'
   const [metric, setMetric] = useState('revenue')
   const [dateRange, setDateRange] = useState(defaultDateRange)
   const [draftRange, setDraftRange] = useState(defaultDateRange)
@@ -316,61 +259,8 @@ export default function AdminDashboardPage() {
   const recentActivities = (dashboard?.recentActivities || []).map(mapActivity)
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f7f8fa] text-[#1f2937]">
-      <header className="sticky top-0 z-20 h-[62px] border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-2" aria-label="LensRent trang chủ">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-[#f45116]"><img className="size-[18px]" src={brandMark} alt="" /></span>
-              <span className="text-[17px] font-bold tracking-tight text-[#f45116]">LensRent</span>
-            </Link>
-            <span className="hidden h-5 w-px bg-gray-200 sm:block" />
-            <span className="hidden text-[11px] font-semibold tracking-wide text-gray-500 sm:block">TRUNG TÂM QUẢN TRỊ</span>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-5">
-            <Link to="/" className="hidden items-center gap-1.5 text-[11px] font-medium text-gray-500 transition hover:text-[#f45116] sm:inline-flex">
-              <AdminIcon name="external" className="size-3.5" /> Xem trang web
-            </Link>
-            <button type="button" className="relative flex size-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100" aria-label="Thông báo">
-              <span className="text-lg leading-none">♧</span>
-              <span className="absolute right-1 top-1 size-2 rounded-full border border-white bg-[#f45116]" />
-            </button>
-            <div className="flex items-center gap-2.5 border-l border-gray-200 pl-3">
-              <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-8" alt="Ảnh đại diện quản trị viên" />
-              <div className="hidden sm:block">
-                <p className="max-w-40 truncate text-[11px] font-semibold text-gray-800">{adminName}</p>
-                <p className="text-[10px] text-gray-400">Admin Hệ Thống</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-[1280px] flex-1 items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
-        <aside className="sticky top-[82px] hidden w-[205px] shrink-0 rounded-xl border border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
-          <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
-            <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-9" />
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-semibold text-gray-800">{adminName}</p>
-              <p className="truncate text-[10px] text-gray-400">Admin Hệ Thống</p>
-            </div>
-            <span className="ml-auto text-xs text-gray-400">⌄</span>
-          </div>
-          <nav className="space-y-1 pt-4">
-            {adminLinks.map((item) => <SidebarLink key={item.label} item={item} />)}
-          </nav>
-          <div className="mt-6 px-3 text-[9px] font-bold tracking-[0.1em] text-gray-400">HỆ THỐNG</div>
-          <nav className="mt-2 space-y-1">
-            {systemLinks.map((item) => <SidebarLink key={item.label} item={item} />)}
-          </nav>
-          <div className="mt-6 rounded-lg border border-gray-100 p-3">
-            <p className="text-[9px] font-bold tracking-[0.08em] text-gray-400">BẢO VỆ DỮ LIỆU</p>
-            <p className="mt-2 text-[10px] leading-4 text-gray-600">CCCD và thẻ học sinh chỉ xem qua màn hình duyệt có phân quyền Admin.</p>
-            <Link to="/admin/verifications" className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-[#e94b0a] hover:underline">Mở hồ sơ xác minh <span aria-hidden="true">→</span></Link>
-          </div>
-        </aside>
-
-        <main id="overview" className="min-w-0 flex-1">
+    <AdminLayout>
+        <main id="overview" className="min-h-full min-w-0 w-full">
           <div className="mb-5 rounded-2xl border border-gray-200 bg-gradient-to-r from-white via-white to-orange-50/70 p-4 shadow-[0_2px_8px_rgba(16,24,40,0.035)] sm:p-5 xl:flex xl:items-center xl:justify-between xl:gap-5">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -469,8 +359,6 @@ export default function AdminDashboardPage() {
 
           <p className="mb-2 mt-5 text-center text-[10px] text-gray-400">Thống kê doanh thu và người dùng được truy vấn trực tiếp từ PostgreSQL.</p>
         </main>
-      </div>
-      <Footer />
-    </div>
+    </AdminLayout>
   )
 }

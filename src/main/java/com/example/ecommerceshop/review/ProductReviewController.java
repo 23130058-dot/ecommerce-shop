@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -38,6 +39,14 @@ public class ProductReviewController {
                              @AuthenticationPrincipal Jwt jwt,
                              @Valid @RequestBody CreateReviewRequest request) {
         reviewService.createReview(userId(jwt), productId, request);
+    }
+
+    @PutMapping("/{reviewId}")
+    public void updateReview(@PathVariable long productId,
+                             @PathVariable long reviewId,
+                             @AuthenticationPrincipal Jwt jwt,
+                             @Valid @RequestBody CreateReviewRequest request) {
+        reviewService.updateReview(userId(jwt), productId, reviewId, request);
     }
 
     private Long userIdOrNull(Jwt jwt) {

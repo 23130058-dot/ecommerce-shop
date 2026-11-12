@@ -1,21 +1,18 @@
 import { Outlet } from 'react-router-dom'
-import Header from './Header'
-import Footer from './Footer'
+import Header from './Header.jsx'
 import OwnerSidebar from '../owner/OwnerSidebar.jsx'
+import { getStoredAuth } from '../../services/authApi.js'
 
 export default function OwnerLayout() {
     return (
-        <div className="flex min-h-screen flex-col bg-[#f7f9fc] font-sans text-gray-900">
+        <div className="flex min-h-screen w-full flex-col bg-[#f7f8fa] text-[#1f2937]">
             <Header />
-            <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-                <div className="grid items-start gap-5 lg:grid-cols-[230px_minmax(0,1fr)] xl:gap-6">
-                    <OwnerSidebar />
-                    <section className="min-w-0">
-                        <Outlet />
-                    </section>
-                </div>
-            </main>
-            <Footer />
+            <div className="flex w-full flex-1 flex-col items-stretch lg:flex-row">
+                <OwnerSidebar />
+                <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
+                    <Outlet />
+                </main>
+            </div>
         </div>
     )
 }

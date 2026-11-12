@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { loginUser, saveAuth } from '../services/authApi.js'
+import { loginUser, loginWithPhone, requestPhoneLoginCode, saveAuth } from '../services/authApi.js'
 import cameraBackground from '../assets/lensrent/hero-background.png'
 import Footer from '../components/layout/Footer.jsx'
 import { showToast } from '../services/toast.js'
@@ -57,7 +57,10 @@ function Benefit({ title, children }) {
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const method = 'email'
+  const [method, setMethod] = useState('email')
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false)
+  const [phoneCode, setPhoneCode] = useState('')
+  const [busy, setBusy] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const showUnavailableNotice = (event, message) => {
     event.preventDefault()
@@ -67,17 +70,33 @@ export default function LoginPage() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
+    setBusy(true)
     try {
-      const auth = await loginUser({
-        email: formData.get('email'),
-        password: formData.get('password'),
-      })
+      if (method === 'phone' && !phoneCodeSent) {
+        const result = await requestPhoneLoginCode(formData.get('phone'))
+        setPhoneCodeSent(true)
+        showToast(`Mã đăng nhập đã được gửi đến ${result.phone}.`, 'success')
+        return
+      }
+      const auth = method === 'email'
+        ? await loginUser({ email: formData.get('email'), password: formData.get('password') })
+        : await loginWithPhone({ phone: formData.get('phone'), code: phoneCode })
       saveAuth(auth, formData.get('remember') === 'on')
       const requestedPath = location.state?.from?.pathname
       navigate(auth.user?.role?.toUpperCase() === 'ADMIN' ? '/admin' : requestedPath || '/', { replace: true })
     } catch (error) {
       showToast(error.message, 'error')
-    }
+    } finally { setBusy(false) }
+  }
+
+  const resendPhoneCode = async (event) => {
+    const phone = new FormData(event.currentTarget.form).get('phone')
+    setBusy(true)
+    try {
+      const result = await requestPhoneLoginCode(phone)
+      showToast(`Mã mới đã được gửi đến ${result.phone}.`, 'success')
+    } catch (error) { showToast(error.message, 'error') }
+    finally { setBusy(false) }
   }
 
   const emailTabClass = method === 'email'
@@ -142,6 +161,7 @@ export default function LoginPage() {
                 <button
                   aria-selected={method === 'email'}
                   className={emailTabClass}
+                  onClick={() => { setMethod('email'); setPhoneCodeSent(false); setPhoneCode('') }}
                   role="tab"
                   type="button"
                 >
@@ -151,8 +171,7 @@ export default function LoginPage() {
                 <button
                   aria-selected={method === 'phone'}
                   className={phoneTabClass}
-                  disabled
-                  title="Đăng nhập bằng số điện thoại sẽ được bổ sung sau."
+                  onClick={() => { setMethod('phone'); setPhoneCodeSent(false); setPhoneCode('') }}
                   role="tab"
                   type="button"
                 >
@@ -177,7 +196,7 @@ export default function LoginPage() {
                     />
                   </label>
 
-                  <div>
+                  {method === 'email' && <div>
                     <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">
                       <label htmlFor="login-password">Mật khẩu</label>
                       <button
@@ -207,7 +226,8 @@ export default function LoginPage() {
                         <EyeIcon visible={passwordVisible} />
                       </button>
                     </span>
-                  </div>
+                  </div>}
+                  {method === 'phone' && phoneCodeSent && <label className="block"><span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">Mã OTP 6 số</span><input autoComplete="one-time-code" inputMode="numeric" maxLength={6} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, '').slice(0, 6))} value={phoneCode} className="h-11 w-full rounded-lg border border-gray-200 px-4 text-sm tracking-[0.3em] outline-none focus:border-[#ff5500]" placeholder="Nhập mã gửi qua SMS" required /></label>}
                 </div>
 
                 <label className="mt-4 flex cursor-pointer items-center gap-2 text-[11px] leading-4 text-gray-500">
@@ -215,10 +235,11 @@ export default function LoginPage() {
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
 
-                <button className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500]" type="submit">
-                  Đăng nhập
+                <button disabled={busy} className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff5500] text-[11px] font-bold uppercase text-white transition hover:bg-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5500] disabled:opacity-60" type="submit">
+                  {busy ? 'Đang xử lý…' : method === 'phone' && !phoneCodeSent ? 'Gửi mã SMS' : 'Đăng nhập'}
                   <span aria-hidden="true" className="text-base leading-none">→</span>
                 </button>
+                {method === 'phone' && phoneCodeSent && <button disabled={busy} className="mt-3 w-full text-xs font-semibold text-[#ff5500] disabled:opacity-60" onClick={resendPhoneCode} type="button">Gửi lại mã SMS</button>}
               </form>
 
               <div className="relative mt-6 flex h-6 items-center justify-center">

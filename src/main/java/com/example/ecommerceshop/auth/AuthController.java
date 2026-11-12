@@ -3,6 +3,9 @@ package com.example.ecommerceshop.auth;
 import com.example.ecommerceshop.auth.AuthDtos.AuthResponse;
 import com.example.ecommerceshop.auth.AuthDtos.LoginRequest;
 import com.example.ecommerceshop.auth.AuthDtos.RegisterRequest;
+import com.example.ecommerceshop.auth.AuthDtos.PhoneCodeRequest;
+import com.example.ecommerceshop.auth.AuthDtos.PhoneCodeResponse;
+import com.example.ecommerceshop.auth.AuthDtos.PhoneLoginRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,5 +31,15 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/phone-code")
+    public PhoneCodeResponse phoneCode(@Valid @RequestBody PhoneCodeRequest request) {
+        return authService.sendPhoneLoginCode(request);
+    }
+
+    @PostMapping("/phone-login")
+    public AuthResponse phoneLogin(@Valid @RequestBody PhoneLoginRequest request) {
+        return authService.loginWithPhone(request);
     }
 }

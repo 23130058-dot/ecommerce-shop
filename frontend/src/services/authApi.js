@@ -31,6 +31,14 @@ export function loginUser(payload) {
   return sendAuthRequest('login', payload)
 }
 
+export function requestPhoneLoginCode(phone) {
+  return sendAuthRequest('phone-code', { phone })
+}
+
+export function loginWithPhone({ phone, code }) {
+  return sendAuthRequest('phone-login', { phone, code })
+}
+
 export function saveAuth(auth, remember = false) {
   localStorage.removeItem(AUTH_STORAGE_KEY)
   sessionStorage.removeItem(AUTH_STORAGE_KEY)

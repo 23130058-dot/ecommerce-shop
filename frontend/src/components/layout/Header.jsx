@@ -12,11 +12,8 @@ import { getCart, getWishlist } from '../../services/shoppingApi.js'
 import { getWorkspacePreference, getWorkspacePreferenceKey, saveWorkspacePreference } from '../../services/workspacePreference.js'
 import AccountAvatar from './AccountAvatar.jsx'
 
-export default function Header({
-  searchValue = '',
-  onSearchChange = () => {},
-  onSearch = () => {},
-}) {
+export default function Header({ searchValue, onSearchChange, onSearch } = {}) {
+  const [internalSearchValue, setInternalSearchValue] = useState('')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const { auth, setAuth } = useCurrentAccount()
   const role = auth?.user?.role?.toUpperCase() || 'USER'
@@ -114,6 +111,13 @@ export default function Header({
     navigate('/login')
   }
 
+  const visibleSearchValue = searchValue ?? internalSearchValue
+  const handleSearchChange = onSearchChange || setInternalSearchValue
+  const handleSearch = onSearch || (() => {
+    const term = visibleSearchValue.trim()
+    navigate(term ? `/categories?search=${encodeURIComponent(term)}` : '/categories')
+  })
+
   const selectWorkspace = (workspace) => {
     if (role === 'ADMIN') return
     saveWorkspacePreference(auth?.user, workspace)
@@ -157,7 +161,7 @@ export default function Header({
           role="search"
           onSubmit={(event) => {
             event.preventDefault()
-            onSearch()
+            handleSearch()
           }}
         >
           <img className="size-4 shrink-0" src={searchIcon} alt="" />
@@ -165,8 +169,8 @@ export default function Header({
             className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400"
             type="search"
             placeholder="Tìm kiếm thiết bị..."
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
+            value={visibleSearchValue}
+            onChange={(event) => handleSearchChange(event.target.value)}
             aria-label="Tìm kiếm thiết bị"
           />
         </form>

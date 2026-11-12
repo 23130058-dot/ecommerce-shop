@@ -44,6 +44,14 @@ export function getAdminUsers({ search = '', role = 'all', status = 'all', page 
   return requestAdminApi(`/api/admin/users?${params}`)
 }
 
+export function createAdminUser(user) {
+  return requestAdminApi('/api/admin/users', { method: 'POST', body: JSON.stringify(user) })
+}
+
+export function updateAdminUser(userId, user) {
+  return requestAdminApi(`/api/admin/users/${userId}`, { method: 'PUT', body: JSON.stringify(user) })
+}
+
 export function updateAdminUserStatus(userId, status) {
   return requestAdminApi(`/api/admin/users/${userId}/status`, {
     method: 'PATCH',
@@ -83,12 +91,34 @@ export function updateAdminProduct(productId, product) {
   })
 }
 
+export function createAdminProduct(product) {
+  return requestAdminApi('/api/admin/products', { method: 'POST', body: JSON.stringify(product) })
+}
+
+export function reviewAdminProduct(productId, decision, reason = '') {
+  return requestAdminApi(`/api/admin/products/${productId}/review`, {
+    method: 'PATCH', body: JSON.stringify({ decision, reason }),
+  })
+}
+
 export function getAdminOrders(options = {}) {
   return requestAdminApi(`/api/admin/orders?${buildPageQuery(options)}`)
 }
 
 export function getAdminOrder(orderId) {
   return requestAdminApi(`/api/admin/orders/${orderId}`)
+}
+
+export function createAdminOrder(order) {
+  return requestAdminApi('/api/admin/orders', { method: 'POST', body: JSON.stringify(order) })
+}
+
+export function updateAdminOrder(orderId, order) {
+  return requestAdminApi(`/api/admin/orders/${orderId}`, { method: 'PUT', body: JSON.stringify(order) })
+}
+
+export function deleteAdminOrder(orderId) {
+  return requestAdminApi(`/api/admin/orders/${orderId}`, { method: 'DELETE' })
 }
 
 export function cancelAdminOrder(orderId) {
@@ -100,11 +130,21 @@ export const resolveMarketplaceReport = (id, body) => requestAdminApi(`/api/admi
 export const getRentalDisputes = (status = 'all') => requestAdminApi(`/api/admin/marketplace/disputes${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
 export const resolveRentalDispute = (id, body) => requestAdminApi(`/api/admin/marketplace/disputes/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 
+
 export const getAdminVerifications = (status = 'all') => requestAdminApi(`/api/admin/verifications${status === 'all' ? '' : `?status=${encodeURIComponent(status)}`}`)
 export const reviewAdminVerification = (userId, type, body) => requestAdminApi(`/api/admin/verifications/${userId}/${encodeURIComponent(type)}`, {
   method: 'PATCH',
   body: JSON.stringify(body),
 })
+
+export const getAdminReviews = ({ search = '', sentiment = 'all', status = 'all', page = 0, size = 25 } = {}) => {
+  const params = new URLSearchParams({ sentiment, status, page: String(page), size: String(size) })
+  if (search.trim()) params.set('search', search.trim())
+  return requestAdminApi(`/api/admin/reviews?${params}`)
+}
+export const updateAdminReviewSentiment = (reviewId, sentiment) => requestAdminApi(`/api/admin/reviews/${reviewId}/sentiment`, { method: 'PATCH', body: JSON.stringify({ sentiment }) })
+export const updateAdminReviewVisibility = (reviewId, status) => requestAdminApi(`/api/admin/reviews/${reviewId}/visibility`, { method: 'PATCH', body: JSON.stringify({ status }) })
+export const deleteAdminReview = (reviewId) => requestAdminApi(`/api/admin/reviews/${reviewId}`, { method: 'DELETE' })
 
 export async function getAdminVerificationDocument(userId, type) {
   const auth = getStoredAuth()

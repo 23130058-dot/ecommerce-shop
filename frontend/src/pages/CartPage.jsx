@@ -196,7 +196,7 @@ export default function CartPage() {
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">▣</span><div><h2 className="text-sm font-bold">Phương thức thanh toán</h2><p className="mt-1 text-xs leading-5 text-gray-500">Chuyển khoản chuyển tiền trực tuyến & ví điện tử (MoMo, ZaloPay).</p></div></div>
+              <div className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">▣</span><div><h2 className="text-sm font-bold">Phương thức thanh toán</h2><p className="mt-1 text-xs leading-5 text-gray-500">Nạp ví LensRent qua ZaloPay Sandbox, sau đó thanh toán đơn thuê bằng số dư ví.</p></div></div>
               <div className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-[#ed4b0a]">◷</span><div><h2 className="text-sm font-bold">Thời gian nhận máy</h2><p className="mt-1 text-xs leading-5 text-gray-500">Vui lòng đến nhận máy sớm 30 phút so với giờ ghi trên hệ thống để thuận tiện bàn giao.</p></div></div>
             </div>
           </>

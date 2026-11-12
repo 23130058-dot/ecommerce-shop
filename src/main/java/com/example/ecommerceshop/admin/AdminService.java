@@ -13,6 +13,13 @@ import com.example.ecommerceshop.admin.AdminDtos.UserPageResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserResponse;
 import com.example.ecommerceshop.admin.AdminDtos.UserSummary;
 import com.example.ecommerceshop.admin.AdminDtos.UpdateProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateUserRequest;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateUserRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.ReviewProductRequest;
+import com.example.ecommerceshop.admin.AdminDtos.CreateRentalAdminRequest;
+import com.example.ecommerceshop.admin.AdminDtos.UpdateRentalAdminRequest;
+import com.example.ecommerceshop.catalog.ProductAvailabilityService;
 import com.example.ecommerceshop.admin.AdminDtos.RevenueTrendResponse;
 import com.example.ecommerceshop.admin.AdminDtos.DailyRevenue;
 import com.example.ecommerceshop.user.User;
@@ -22,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
@@ -31,6 +39,8 @@ import java.util.List;
 import java.util.Locale;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.math.RoundingMode;
+import java.util.UUID;
 
 @Service
 public class AdminService {
@@ -41,11 +51,16 @@ public class AdminService {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
     private final WalletService walletService;
+    private final PasswordEncoder passwordEncoder;
+    private final ProductAvailabilityService availabilityService;
 
-    public AdminService(UserRepository userRepository, JdbcTemplate jdbcTemplate, WalletService walletService) {
+    public AdminService(UserRepository userRepository, JdbcTemplate jdbcTemplate, WalletService walletService,
+                        PasswordEncoder passwordEncoder, ProductAvailabilityService availabilityService) {
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.walletService = walletService;
+        this.passwordEncoder = passwordEncoder;
+        this.availabilityService = availabilityService;
     }
 
     @Transactional(readOnly = true)
@@ -141,6 +156,51 @@ public class AdminService {
     }
 
     @Transactional
+    public UserResponse createUser(CreateUserRequest request) {
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email này đã được sử dụng.");
+        }
+        User user = new User(request.fullName().trim(), email, passwordEncoder.encode(request.password()),
+                blankToNull(request.phone()));
+        user.setRole(normalizeRole(request.role()));
+        user.setStatus(normalizeUserStatus(request.status()));
+        User saved = userRepository.save(user);
+        return toUserResponse(saved, 0);
+    }
+
+    @Transactional
+    public UserResponse updateUser(long userId, UpdateUserRequest request, String currentAdminEmail) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        if (user.getEmail().equalsIgnoreCase(currentAdminEmail)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Không thể sửa tài khoản Admin đang đăng nhập tại màn quản lý người dùng.");
+        }
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCaseAndIdNot(email, userId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email này đã được sử dụng.");
+        }
+        String role = normalizeRole(request.role());
+        String status = normalizeUserStatus(request.status());
+        if ("ADMIN".equalsIgnoreCase(user.getRole()) && !"ADMIN".equals(role)
+                && "ACTIVE".equalsIgnoreCase(user.getStatus())
+                && userRepository.countByRoleIgnoreCaseAndStatusIgnoreCase("ADMIN", "ACTIVE") <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể hạ quyền Admin đang hoạt động cuối cùng.");
+        }
+        if ("ADMIN".equalsIgnoreCase(user.getRole()) && "ACTIVE".equalsIgnoreCase(user.getStatus())
+                && "LOCKED".equals(status)
+                && userRepository.countByRoleIgnoreCaseAndStatusIgnoreCase("ADMIN", "ACTIVE") <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể khóa Admin đang hoạt động cuối cùng.");
+        }
+        user.updateAdminFields(request.fullName().trim(), email, blankToNull(request.phone()));
+        user.setRole(role);
+        user.setStatus(status);
+        User saved = userRepository.save(user);
+        return toUserResponse(saved, countRentals(saved.getId()));
+    }
+
+    @Transactional
     public UserResponse updateUserStatus(long userId, String requestedStatus, String currentAdminEmail) {
         String status = requestedStatus.toUpperCase(Locale.ROOT);
         User user = userRepository.findById(userId)
@@ -217,14 +277,15 @@ public class AdminService {
                 SELECT p.id, p.name, owner.full_name AS owner_name, owner.email AS owner_email,
                        c.name AS category_name, b.name AS brand_name, p.daily_price, p.deposit_amount,
                        COALESCE(p.stock, 0) AS stock, p.status, COALESCE(image.image_url, '') AS image_key,
-                       p.description, p.created_at
+                       p.description, p.created_at, p.review_reason
                 """ + joins + where + " ORDER BY p.created_at DESC NULLS LAST, p.id DESC LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new ProductAdminResponse(
                         rs.getLong("id"), rs.getString("name"), rs.getString("owner_name"),
                         rs.getString("owner_email"), rs.getString("category_name"), rs.getString("brand_name"),
                         rs.getBigDecimal("daily_price"), rs.getBigDecimal("deposit_amount"), rs.getInt("stock"),
                         rs.getString("status"), rs.getString("image_key"), rs.getString("description"),
-                        rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime()),
+                        rs.getTimestamp("created_at") == null ? null : rs.getTimestamp("created_at").toLocalDateTime(),
+                        rs.getString("review_reason")),
                 queryArgs.toArray());
         long totalElements = total == null ? 0 : total;
         return new PageResponse<>(products, safePage, safeSize, totalElements,
@@ -232,19 +293,98 @@ public class AdminService {
     }
 
     @Transactional
+    public ProductAdminResponse createProduct(CreateProductRequest request) {
+        List<User> owners = userRepository.findAllById(List.of(request.ownerId()));
+        if (owners.isEmpty() || !"ACTIVE".equalsIgnoreCase(owners.get(0).getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chủ sản phẩm không tồn tại hoặc đang bị khóa.");
+        }
+        Long categoryId = jdbcTemplate.query("SELECT id FROM categories WHERE lower(name)=lower(?) ORDER BY id LIMIT 1",
+                (rs, n) -> rs.getLong(1), request.categoryName().trim()).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Danh mục sản phẩm không tồn tại."));
+        Long brandId = null;
+        String brandName = request.brandName() == null ? "" : request.brandName().trim();
+        if (!brandName.isBlank()) {
+            brandId = jdbcTemplate.query("SELECT id FROM brands WHERE lower(name)=lower(?) ORDER BY id LIMIT 1",
+                    (rs, n) -> rs.getLong(1), brandName).stream().findFirst()
+                    .orElseGet(() -> jdbcTemplate.queryForObject("INSERT INTO brands(name) VALUES(?) RETURNING id", Long.class, brandName));
+        }
+        if (request.imageKey() != null && request.imageKey().length() > 7_000_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh sản phẩm quá lớn.");
+        }
+        String name = request.name().trim();
+        Long productId = jdbcTemplate.queryForObject("""
+                INSERT INTO products(owner_id,category_id,brand_id,name,description,daily_price,deposit_amount,stock,
+                                     status,item_type,tags,rating,featured_order)
+                VALUES(?,?,?,?,?,?,?,?, 'ACTIVE', ?, '', 5.0, 100) RETURNING id
+                """, Long.class, request.ownerId(), categoryId, brandId, name,
+                request.description() == null ? "" : request.description().trim(), request.dailyPrice(),
+                request.depositAmount(), request.stock(), name);
+        if (request.imageKey() != null && !request.imageKey().isBlank()) {
+            jdbcTemplate.update("INSERT INTO product_images(product_id,image_url,is_primary) VALUES(?,?,TRUE)",
+                    productId, request.imageKey().trim());
+        }
+        return getProducts("" + productId, "all", 0, 1).items().get(0);
+    }
+
+    @Transactional
+    public void reviewProduct(long productId, ReviewProductRequest request, String adminEmail) {
+        String decision = request.decision().trim().toUpperCase(Locale.ROOT);
+        String reason = request.reason() == null ? "" : request.reason().trim();
+        if ("REJECT".equals(decision) && reason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do từ chối để gửi cho Owner.");
+        }
+        List<ProductOwnerRow> products = jdbcTemplate.query("""
+                SELECT p.owner_id, p.name, p.status FROM products p WHERE p.id=? FOR UPDATE
+                """, (rs, n) -> new ProductOwnerRow(rs.getLong("owner_id"), rs.getString("name"), rs.getString("status")), productId);
+        if (products.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm.");
+        ProductOwnerRow product = products.get(0);
+        if (!List.of("PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL").contains(
+                product.status() == null ? "" : product.status().trim().toUpperCase(Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Sản phẩm không còn ở trạng thái chờ duyệt.");
+        }
+        boolean approved = "APPROVE".equals(decision);
+        String status = approved ? "ACTIVE" : "REJECTED";
+        jdbcTemplate.update("UPDATE products SET status=?, review_reason=? WHERE id=?", status,
+                approved ? null : reason, productId);
+        String title = approved ? "Sản phẩm đã được duyệt" : "Sản phẩm bị từ chối";
+        String message = approved
+                ? "Sản phẩm “" + product.name() + "” đã được Admin duyệt và hiển thị trên cửa hàng."
+                : "Sản phẩm “" + product.name() + "” chưa được duyệt. Lý do: " + reason;
+        jdbcTemplate.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                VALUES(?,'PRODUCT_REVIEW',?,?,?)
+                """, product.ownerId(), title, message, "/owner/equipment");
+    }
+
+    private record ProductOwnerRow(long ownerId, String name, String status) {}
+
+    @Transactional
     public void updateProductStatus(long productId, String requestedStatus) {
         String status = requestedStatus == null ? "" : requestedStatus.trim().toUpperCase(Locale.ROOT);
         if (!List.of("ACTIVE", "INACTIVE", "PENDING").contains(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sản phẩm không hợp lệ.");
         }
-        int changed = jdbcTemplate.update("UPDATE products SET status = ? WHERE id = ?", status, productId);
+        String currentStatus = jdbcTemplate.query("SELECT status FROM products WHERE id=?",
+                (rs, n) -> rs.getString(1), productId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm."));
+        if ("ACTIVE".equals(status) && List.of("PENDING", "PENDING_APPROVAL", "WAITING_APPROVAL", "REJECTED")
+                .contains(currentStatus == null ? "" : currentStatus.trim().toUpperCase(Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm chờ duyệt phải được duyệt hoặc từ chối bằng chức năng xét duyệt.");
+        }
+        int changed = jdbcTemplate.update("UPDATE products SET status = ?, review_reason = CASE WHEN ?='PENDING' THEN NULL ELSE review_reason END WHERE id = ?", status, status, productId);
         if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm.");
     }
 
     @Transactional
     public void updateProduct(long productId, UpdateProductRequest request) {
-        Integer exists=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM products WHERE id=?",Integer.class,productId);
-        if(exists==null||exists==0) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy sản phẩm.");
+        String currentStatus=jdbcTemplate.query("SELECT status FROM products WHERE id=?",
+                (rs,n)->rs.getString(1),productId).stream().findFirst()
+                .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy sản phẩm."));
+        String requestedStatus=request.status().trim().toUpperCase(Locale.ROOT);
+        if("ACTIVE".equals(requestedStatus)&&List.of("PENDING","PENDING_APPROVAL","WAITING_APPROVAL","REJECTED")
+                .contains(currentStatus==null?"":currentStatus.trim().toUpperCase(Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Sản phẩm chờ xử lý cần được duyệt bằng chức năng xét duyệt.");
+        }
         Long categoryId=jdbcTemplate.query("SELECT id FROM categories WHERE lower(name)=lower(?) ORDER BY id LIMIT 1",
                 (rs,n)->rs.getLong(1),request.categoryName().trim()).stream().findFirst()
                 .orElseThrow(()->new ResponseStatusException(HttpStatus.BAD_REQUEST,"Danh mục sản phẩm không tồn tại."));
@@ -259,7 +399,7 @@ public class AdminService {
         jdbcTemplate.update("""
                 UPDATE products SET name=?,category_id=?,brand_id=?,description=?,daily_price=?,deposit_amount=?,stock=?,status=? WHERE id=?
                 """,request.name().trim(),categoryId,brandId,request.description()==null?"":request.description().trim(),
-                request.dailyPrice(),request.depositAmount(),request.stock(),request.status().trim().toUpperCase(Locale.ROOT),productId);
+                request.dailyPrice(),request.depositAmount(),request.stock(),requestedStatus,productId);
         if(request.imageKey()!=null&&!request.imageKey().isBlank()) {
             int changed=jdbcTemplate.update("""
                     UPDATE product_images SET image_url=?,is_primary=TRUE WHERE id=(
@@ -297,6 +437,93 @@ public class AdminService {
                 """,(rs,n)->new AdminDtos.CategoryRevenue(rs.getString("name"),rs.getBigDecimal("amount"),rs.getDouble("percentage")),from,to);
         return new RevenueTrendResponse(from,to,total,completed,daily,categories);
     }
+
+    @Transactional
+    public RentalAdminDetail createOrder(CreateRentalAdminRequest request) {
+        User renter = userRepository.findById(request.renterId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người thuê."));
+        if (!"ACTIVE".equalsIgnoreCase(renter.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tạo đơn cho tài khoản đang bị khóa.");
+        }
+        String delivery = request.deliveryMethod().trim().toUpperCase(Locale.ROOT);
+        String address = blankToNull(request.deliveryAddress());
+        if ("HOME".equals(delivery) && address == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn giao tận nơi cần có địa chỉ.");
+        }
+        List<AdminOrderProduct> products = jdbcTemplate.query("""
+                SELECT id,owner_id,name,daily_price,deposit_amount,stock,status FROM products WHERE id=? FOR UPDATE
+                """, (rs, n) -> new AdminOrderProduct(rs.getLong("id"), rs.getLong("owner_id"), rs.getString("name"),
+                rs.getBigDecimal("daily_price"), rs.getBigDecimal("deposit_amount"), rs.getInt("stock"), rs.getString("status")),
+                request.productId());
+        if (products.isEmpty() || !"ACTIVE".equalsIgnoreCase(products.get(0).status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ tạo đơn cho sản phẩm đang hoạt động.");
+        }
+        if (request.startDate() == null || request.endDate() == null || !request.endDate().isAfter(request.startDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng ngày thuê không hợp lệ.");
+        }
+        AdminOrderProduct product = products.get(0);
+        availabilityService.requireAvailable(product.id(), request.startDate(), request.endDate(), request.quantity(), null);
+        long days = ChronoUnit.DAYS.between(request.startDate(), request.endDate());
+        BigDecimal rentalAmount = product.dailyPrice().multiply(BigDecimal.valueOf(days))
+                .multiply(BigDecimal.valueOf(request.quantity())).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal depositAmount = product.depositAmount().multiply(BigDecimal.valueOf(request.quantity()));
+        BigDecimal serviceFee = rentalAmount.multiply(new BigDecimal("0.05")).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal deliveryFee = "HOME".equals(delivery) ? new BigDecimal("50000") : BigDecimal.ZERO;
+        BigDecimal total = rentalAmount.add(depositAmount).add(serviceFee).add(deliveryFee);
+        int reserved = jdbcTemplate.update("UPDATE products SET stock=COALESCE(stock,0)-? WHERE id=? AND COALESCE(stock,0)>=?",
+                request.quantity(), product.id(), request.quantity());
+        if (reserved != 1) throw new ResponseStatusException(HttpStatus.CONFLICT, "Số lượng sản phẩm không còn đủ.");
+        String code = "LR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        Long rentalId = jdbcTemplate.queryForObject("""
+                INSERT INTO rentals(rental_code,renter_id,total_amount,deposit_amount,service_fee,student_discount_amount,
+                    delivery_fee,status,delivery_method,delivery_address,district,city,contact_name,contact_phone,contact_email)
+                VALUES(?,?,?,?,?,0,?,'PENDING',?,?,?,?,?,?,?) RETURNING id
+                """, Long.class, code, renter.getId(), total, depositAmount, serviceFee, deliveryFee, delivery, address,
+                blankToNull(request.district()), blankToNull(request.city()), request.contactName().trim(),
+                request.contactPhone().trim(), blankToNull(request.contactEmail()));
+        jdbcTemplate.update("""
+                INSERT INTO rental_items(rental_id,product_id,quantity,start_date,end_date,daily_price,subtotal,status)
+                VALUES(?,?,?,?,?,?,?,'PENDING')
+                """, rentalId, product.id(), request.quantity(), request.startDate(), request.endDate(),
+                product.dailyPrice(), rentalAmount);
+        jdbcTemplate.update("INSERT INTO payments(rental_id,method,provider,amount,status) VALUES(?,'ADMIN','ADMIN',?,'UNPAID')",
+                rentalId, total);
+        jdbcTemplate.update("""
+                INSERT INTO user_notifications(user_id,type,title,message,target_url)
+                VALUES(?,'BOOKING','Có đơn thuê mới do Admin tạo',?,'/owner/bookings')
+                """, product.ownerId(), "Đơn thuê " + code + " đang chờ bạn xác nhận.");
+        return getOrder(rentalId);
+    }
+
+    @Transactional
+    public RentalAdminDetail updateOrder(long rentalId, UpdateRentalAdminRequest request) {
+        List<String> statuses = jdbcTemplate.query("SELECT status FROM rentals WHERE id=? FOR UPDATE",
+                (rs, n) -> rs.getString(1), rentalId);
+        if (statuses.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn thuê.");
+        if (!"PENDING".equalsIgnoreCase(statuses.get(0))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ sửa được thông tin giao nhận của đơn đang chờ xác nhận.");
+        }
+        String delivery = request.deliveryMethod().trim().toUpperCase(Locale.ROOT);
+        String address = blankToNull(request.deliveryAddress());
+        if ("HOME".equals(delivery) && address == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn giao tận nơi cần có địa chỉ.");
+        }
+        jdbcTemplate.update("""
+                UPDATE rentals SET delivery_method=?,delivery_address=?,district=?,city=?,contact_name=?,contact_phone=?,contact_email=?
+                WHERE id=?
+                """, delivery, address, blankToNull(request.district()), blankToNull(request.city()),
+                request.contactName().trim(), request.contactPhone().trim(), blankToNull(request.contactEmail()), rentalId);
+        return getOrder(rentalId);
+    }
+
+    @Transactional
+    public void deleteOrder(long rentalId) {
+        // Keep the rental and its lines for audit/history; cancellation is the soft-delete state.
+        cancelPendingOrder(rentalId);
+    }
+
+    private record AdminOrderProduct(long id, long ownerId, String name, BigDecimal dailyPrice,
+                                     BigDecimal depositAmount, int stock, String status) {}
 
     @Transactional(readOnly = true)
     public PageResponse<RentalAdminResponse> getOrders(String search, String requestedStatus, int page, int size) {
@@ -438,8 +665,10 @@ public class AdminService {
         jdbcTemplate.update("UPDATE rentals SET status = 'CANCELLED' WHERE id = ?", rentalId);
         walletService.refundCancelledRental(rentalId);
         jdbcTemplate.update("""
-                UPDATE payments SET status = 'REFUNDED'
-                WHERE rental_id = ? AND UPPER(COALESCE(status, '')) IN ('PAID', 'SUCCESS', 'COMPLETED')
+                UPDATE payments SET status = CASE
+                    WHEN UPPER(COALESCE(status,'')) IN ('PAID','SUCCESS','COMPLETED') THEN 'REFUNDED'
+                    ELSE 'CANCELLED' END
+                WHERE rental_id = ? AND UPPER(COALESCE(status,'')) NOT IN ('REFUNDED','CANCELLED')
                 """, rentalId);
     }
 
@@ -557,6 +786,21 @@ public class AdminService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
         }
         return normalized;
+    }
+
+    private String normalizeUserStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái tài khoản không hợp lệ.");
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("ACTIVE", "LOCKED").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái tài khoản không hợp lệ.");
+        }
+        return normalized;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Long parseIdSearch(String search) {

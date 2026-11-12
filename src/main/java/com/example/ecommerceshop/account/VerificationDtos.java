@@ -26,7 +26,7 @@ public final class VerificationDtos {
             @NotBlank @Size(max = 30) String phone,
             @NotBlank @Pattern(regexp = "\\d{6}", message = "Mã xác minh gồm 6 chữ số.") String code
     ) {}
-    public record PhoneCodeResponse(String phone, String demoCode, LocalDateTime expiresAt) {}
+    public record PhoneCodeResponse(String phone, LocalDateTime expiresAt) {}
 
     public record AdminVerificationResponse(
             Long userId,

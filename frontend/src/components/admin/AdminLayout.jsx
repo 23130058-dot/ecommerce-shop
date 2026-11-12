@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
 import brandMark from '../../assets/lensrent/brand-mark.svg'
-import Footer from '../layout/Footer.jsx'
 import AccountAvatar from '../layout/AccountAvatar.jsx'
 import useCurrentAccount from '../../hooks/useCurrentAccount.js'
 
@@ -46,11 +45,7 @@ const primaryLinks = [
   { label: 'Quản lý đơn thuê', icon: 'calendar', to: '/admin/orders' },
   { label: 'Khiếu nại & Tranh chấp', icon: 'message', to: '/admin/disputes' },
   { label: 'Xác minh tài khoản', icon: 'shield', to: '/admin/verifications' },
-]
-
-const systemLinks = [
-  { label: 'Bảo mật & Phân quyền', icon: 'shield', to: '/admin/security', disabled: true },
-  { label: 'Cấu hình hệ thống', icon: 'settings', to: '/admin/settings', disabled: true },
+  { label: 'Bình luận & cảm xúc', icon: 'message', to: '/admin/reviews' },
 ]
 
 function NavigationItem({ item, pathname }) {
@@ -68,9 +63,9 @@ export default function AdminLayout({ children }) {
   const admin = auth?.user
   const adminName = admin?.fullName || admin?.email || 'Quản trị viên'
   return (
-    <div className="flex min-h-screen flex-col bg-[#f7f8fa] text-[#1f2937]">
+    <div className="flex min-h-screen w-full flex-col bg-[#f7f8fa] text-[#1f2937]">
       <header className="sticky top-0 z-20 h-[62px] border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
+        <div className="flex h-full w-full items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-2" aria-label="LensRent trang chủ">
               <span className="flex size-8 items-center justify-center rounded-lg bg-[#f45116]"><img className="size-[18px]" src={brandMark} alt="" /></span>
@@ -86,28 +81,22 @@ export default function AdminLayout({ children }) {
             </button>
             <div className="flex items-center gap-2.5 border-l border-gray-200 pl-3">
               <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-8" alt="Ảnh đại diện quản trị viên" />
-              <div className="hidden sm:block"><p className="max-w-40 truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="text-[10px] text-gray-400">Admin Hệ Thống</p></div>
+              <div className="hidden sm:block"><p className="max-w-40 truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="text-[10px] text-gray-400">Quản trị viên</p></div>
             </div>
           </div>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-[1280px] flex-1 items-start gap-6 px-4 py-5 sm:px-6 lg:gap-8">
-        <aside className="sticky top-[82px] hidden w-[205px] shrink-0 rounded-xl border border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
+      <div className="flex w-full flex-1 items-stretch">
+        <aside className="sticky top-[62px] hidden h-[calc(100vh-62px)] w-[240px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-3 lg:block" aria-label="Menu quản trị">
           <div className="flex items-center gap-2.5 border-b border-gray-100 px-2 pb-4 pt-1">
             <AccountAvatar avatarUrl={admin?.avatarUrl} className="size-9" />
-            <div className="min-w-0"><p className="truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="truncate text-[10px] text-gray-400">Admin Hệ Thống</p></div>
+            <div className="min-w-0"><p className="truncate text-[11px] font-semibold text-gray-800">{adminName}</p><p className="truncate text-[10px] text-gray-400">Quản trị viên</p></div>
             <span className="ml-auto text-xs text-gray-400">⌄</span>
           </div>
           <nav className="space-y-1 pt-4">{primaryLinks.map((item) => <NavigationItem key={item.label} item={item} pathname={pathname} />)}</nav>
-          <div className="mt-6 px-3 text-[9px] font-bold tracking-[0.1em] text-gray-400">HỆ THỐNG</div>
-          <nav className="mt-2 space-y-1">{systemLinks.map((item) => <NavigationItem key={item.label} item={item} pathname={pathname} />)}</nav>
-          <div className="mt-6 rounded-lg border border-orange-100 bg-orange-50/60 p-3">
-            <p className="text-[9px] font-bold tracking-[0.08em] text-orange-700">LƯU Ý QUẢN TRỊ</p>
-            <p className="mt-2 text-[10px] leading-4 text-gray-600">CCCD và giấy tờ học sinh chỉ được xem để xét duyệt trong khu vực Admin.</p>
-          </div>
         </aside>
-        <div className="min-w-0 flex-1">
-          <nav className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:hidden" aria-label="Menu quản trị">
+        <div className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
+          <nav className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:hidden" aria-label="Menu quản trị">
             {primaryLinks.filter((item) => !item.disabled).map((item) => {
               const active = item.to === '/admin' ? pathname === '/admin' : pathname.startsWith(item.to)
               return <Link key={item.label} to={item.to} className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-medium ${active ? 'border-orange-200 bg-orange-50 text-[#e94b0a]' : 'border-gray-200 bg-white text-gray-600'}`}><AdminIcon name={item.icon} className="size-3.5" />{item.label}</Link>
@@ -116,7 +105,6 @@ export default function AdminLayout({ children }) {
           {children}
         </div>
       </div>
-      <Footer />
     </div>
   )
 }

@@ -1,10 +1,10 @@
 import { API_BASE_URL, getStoredAuth } from './authApi.js'
 
-async function request(productId, { method = 'GET', page = 0, size = 10, body, signal } = {}) {
+async function request(productId, { method = 'GET', page = 0, size = 10, body, reviewId, signal } = {}) {
   const auth = getStoredAuth()
   const params = new URLSearchParams({ page: String(page), size: String(size) })
   const endpoint = API_BASE_URL + '/api/products/' + encodeURIComponent(productId) + '/reviews'
-  const url = method === 'GET' ? endpoint + '?' + params.toString() : endpoint
+  const url = method === 'GET' ? endpoint + '?' + params.toString() : reviewId ? `${endpoint}/${encodeURIComponent(reviewId)}` : endpoint
   let response
   try {
     response = await fetch(url, {
@@ -33,3 +33,4 @@ async function request(productId, { method = 'GET', page = 0, size = 10, body, s
 
 export const getProductReviews = (productId, options) => request(productId, options)
 export const createProductReview = (productId, body) => request(productId, { method: 'POST', body })
+export const updateProductReview = (productId, reviewId, body) => request(productId, { method: 'PUT', reviewId, body })

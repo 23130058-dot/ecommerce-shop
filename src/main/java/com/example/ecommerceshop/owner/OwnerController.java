@@ -100,8 +100,27 @@ public class OwnerController {
         workspaceService.cancelBooking(userId(jwt), rentalId);
     }
 
+    @PatchMapping("/bookings/{rentalId}/cancel-return")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmCancellationReturn(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {
+        ownerService.confirmCancellationReturn(userId(jwt), rentalId);
+    }
+
+    @PatchMapping("/bookings/{rentalId}/return")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmBookingReturn(@AuthenticationPrincipal Jwt jwt, @PathVariable long rentalId) {
+        workspaceService.confirmRentalReturns(userId(jwt), rentalId);
+    }
+
     @GetMapping("/schedule")
     public List<ScheduleResponse> schedules(@AuthenticationPrincipal Jwt jwt) { return workspaceService.schedules(userId(jwt)); }
+
+    @GetMapping("/schedule/overview")
+    public ScheduleOverviewResponse scheduleOverview(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return workspaceService.scheduleOverview(userId(jwt), from, to);
+    }
 
     @PutMapping("/schedule/{productId}")
     public ScheduleResponse saveSchedule(@AuthenticationPrincipal Jwt jwt, @PathVariable long productId,

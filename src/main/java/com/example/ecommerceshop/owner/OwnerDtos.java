@@ -45,7 +45,8 @@ public final class OwnerDtos {
             Integer availableQuantity,
             Integer currentlyRentedQuantity,
             String status,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            String reviewReason
     ) {}
 
     public record BookingResponse(
@@ -92,6 +93,16 @@ public final class OwnerDtos {
             List<LocalDate> blockedDates
     ) {}
 
+    public record ScheduleCalendarEvent(Long rentalItemId, Long rentalId, String rentalCode,
+                                        String productName, String renterName, Integer quantity,
+                                        LocalDate startDate, LocalDate endDate, String status,
+                                        BigDecimal subtotal) {}
+
+    public record ScheduleOverviewResponse(LocalDate from, LocalDate to, long totalRentals,
+                                           long activeDevices, BigDecimal projectedRevenue,
+                                           List<ScheduleResponse> products,
+                                           List<ScheduleCalendarEvent> events) {}
+
     public record SaveScheduleRequest(
             @NotNull @DecimalMin("1.0") BigDecimal dailyPrice,
             @NotNull @DecimalMin("1.0") BigDecimal weekendPrice,
@@ -119,7 +130,7 @@ public final class OwnerDtos {
                                       BigDecimal amount, String status, LocalDateTime createdAt) {}
 
     public record WithdrawalRequest(
-            @NotNull @DecimalMin("10000.0") @DecimalMax("50000000.0") BigDecimal amount) {}
+            @NotNull @DecimalMin("1") BigDecimal amount) {}
 
     public record ReviewCandidateResponse(Long rentalId, String rentalCode, Long renterId,
                                           String renterName, String productNames, LocalDate startDate,

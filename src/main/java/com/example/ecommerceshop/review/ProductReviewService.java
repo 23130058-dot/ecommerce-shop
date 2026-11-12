@@ -21,9 +21,11 @@ import java.util.Map;
 public class ProductReviewService {
     private static final int MAX_PAGE_SIZE = 30;
     private final JdbcTemplate jdbc;
+    private final SentimentClassifier sentimentClassifier;
 
-    public ProductReviewService(JdbcTemplate jdbc) {
+    public ProductReviewService(JdbcTemplate jdbc, SentimentClassifier sentimentClassifier) {
         this.jdbc = jdbc;
+        this.sentimentClassifier = sentimentClassifier;
     }
 
     @Transactional(readOnly = true)
@@ -35,14 +37,14 @@ public class ProductReviewService {
         ReviewSummary summary = jdbc.queryForObject("""
                 SELECT COUNT(*) AS review_count, COALESCE(AVG(rating), 0) AS average_rating
                 FROM product_reviews
-                WHERE product_id = ?
+                WHERE product_id = ? AND moderation_status = 'VISIBLE'
                 """, (rs, row) -> new ReviewSummary(rs.getLong("review_count"), rs.getBigDecimal("average_rating")), productId);
         long count = summary == null ? 0 : summary.count();
         BigDecimal average = summary == null ? BigDecimal.ZERO : summary.average().setScale(1, RoundingMode.HALF_UP);
 
         Map<Integer, Long> distribution = new LinkedHashMap<>();
         for (int rating = 5; rating >= 1; rating--) distribution.put(rating, 0L);
-        jdbc.query("SELECT rating, COUNT(*) AS amount FROM product_reviews WHERE product_id = ? GROUP BY rating",
+        jdbc.query("SELECT rating, COUNT(*) AS amount FROM product_reviews WHERE product_id = ? AND moderation_status = 'VISIBLE' GROUP BY rating",
                 rs -> { distribution.put(rs.getInt("rating"), rs.getLong("amount")); }, productId);
 
         boolean hasReviewed = userId != null && exists(
@@ -53,16 +55,26 @@ public class ProductReviewService {
         long offset = (long) page * size;
         List<ReviewResponse> reviews = jdbc.query("""
                 SELECT pr.id, COALESCE(NULLIF(u.full_name, ''), 'Người dùng LensRent') AS reviewer_name,
-                       u.avatar_url, pr.rating, pr.comment, pr.created_at, pr.is_sample
+                       u.avatar_url, pr.rating, pr.comment, pr.created_at, pr.is_sample,
+                       pr.sentiment, pr.sentiment_confidence
                 FROM product_reviews pr
                 JOIN users u ON u.id = pr.user_id
-                WHERE pr.product_id = ?
+                WHERE pr.product_id = ? AND pr.moderation_status = 'VISIBLE'
                 ORDER BY pr.created_at DESC, pr.id DESC
                 LIMIT ? OFFSET ?
                 """, this::mapReview, productId, size, offset);
 
+        ReviewResponse myReview = userId == null ? null : jdbc.query("""
+                SELECT pr.id, COALESCE(NULLIF(u.full_name, ''), 'Người dùng LensRent') AS reviewer_name,
+                       u.avatar_url, pr.rating, pr.comment, pr.created_at, pr.is_sample,
+                       pr.sentiment, pr.sentiment_confidence
+                FROM product_reviews pr
+                JOIN users u ON u.id = pr.user_id
+                WHERE pr.product_id = ? AND pr.user_id = ? AND pr.is_sample = FALSE
+                """, rs -> rs.next() ? mapReview(rs, 0) : null, productId, userId);
+
         int totalPages = count == 0 ? 0 : (int) Math.ceil((double) count / size);
-        return new ReviewsResponse(average, count, distribution, canReview, hasReviewed, reviews, page, size, totalPages);
+        return new ReviewsResponse(average, count, distribution, canReview, hasReviewed, reviews, myReview, page, size, totalPages);
     }
 
     @Transactional
@@ -76,11 +88,12 @@ public class ProductReviewService {
                     "Chỉ người thuê đã hoàn tất đơn của thiết bị này mới có thể gửi đánh giá.");
         }
 
+        SentimentClassifier.Prediction prediction = sentimentClassifier.predict(request.comment());
         int inserted = jdbc.update("""
-                INSERT INTO product_reviews (product_id, user_id, rating, comment)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO product_reviews (product_id, user_id, rating, comment, sentiment, sentiment_confidence, sentiment_source)
+                VALUES (?, ?, ?, ?, ?, ?, 'MODEL')
                 ON CONFLICT (product_id, user_id) DO NOTHING
-                """, productId, userId, request.rating(), request.comment().trim());
+                """, productId, userId, request.rating(), request.comment().trim(), prediction.label(), prediction.confidence());
         if (inserted == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã đánh giá thiết bị này rồi.");
         }
@@ -89,6 +102,32 @@ public class ProductReviewService {
                 UPDATE products p
                 SET rating = (SELECT ROUND(AVG(pr.rating)::numeric, 1)
                               FROM product_reviews pr WHERE pr.product_id = p.id)
+                WHERE p.id = ?
+                """, productId);
+    }
+
+    @Transactional
+    public void updateReview(long userId, long productId, long reviewId, CreateReviewRequest request) {
+        requireActiveProduct(productId);
+        if (!isCompletedRenter(userId, productId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Chỉ người thuê đã hoàn tất đơn của thiết bị này mới có thể chỉnh sửa đánh giá.");
+        }
+        if (!exists("SELECT EXISTS(SELECT 1 FROM product_reviews WHERE id = ? AND product_id = ? AND user_id = ? AND is_sample = FALSE)", reviewId, productId, userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đánh giá của bạn.");
+        }
+
+        SentimentClassifier.Prediction prediction = sentimentClassifier.predict(request.comment());
+        jdbc.update("""
+                UPDATE product_reviews
+                SET rating = ?, comment = ?, sentiment = ?, sentiment_confidence = ?,
+                    sentiment_source = 'MODEL', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND product_id = ? AND user_id = ? AND is_sample = FALSE
+                """, request.rating(), request.comment().trim(), prediction.label(), prediction.confidence(), reviewId, productId, userId);
+        jdbc.update("""
+                UPDATE products p
+                SET rating = (SELECT ROUND(AVG(pr.rating)::numeric, 1)
+                              FROM product_reviews pr WHERE pr.product_id = p.id AND pr.moderation_status = 'VISIBLE')
                 WHERE p.id = ?
                 """, productId);
     }
@@ -120,7 +159,8 @@ public class ProductReviewService {
     private ReviewResponse mapReview(ResultSet rs, int row) throws SQLException {
         return new ReviewResponse(rs.getLong("id"), rs.getString("reviewer_name"), rs.getString("avatar_url"),
                 rs.getInt("rating"), rs.getString("comment"), rs.getTimestamp("created_at").toLocalDateTime(),
-                !rs.getBoolean("is_sample"), rs.getBoolean("is_sample"));
+                !rs.getBoolean("is_sample"), rs.getBoolean("is_sample"), rs.getString("sentiment"),
+                rs.getBigDecimal("sentiment_confidence") == null ? null : rs.getBigDecimal("sentiment_confidence").doubleValue());
     }
 
     private record ReviewSummary(long count, BigDecimal average) {

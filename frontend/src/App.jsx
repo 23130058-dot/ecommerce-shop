@@ -12,6 +12,7 @@ import AdminProductsPage from './pages/AdminProductsPage.jsx'
 import AdminOrdersPage from './pages/AdminOrdersPage.jsx'
 import AdminMarketplacePage from './pages/AdminMarketplacePage.jsx'
 import AdminVerificationsPage from './pages/AdminVerificationsPage.jsx'
+import AdminReviewsPage from './pages/AdminReviewsPage.jsx'
 import StoresPage from './pages/StoresPage.jsx'
 import ProductDetailPage from './pages/ProductDetailPage.jsx'
 import WishlistPage from './pages/WishlistPage.jsx'
@@ -19,6 +20,7 @@ import ComparePage from './pages/ComparePage.jsx'
 import CartPage from './pages/CartPage.jsx'
 import CheckoutPage from './pages/CheckoutPage.jsx'
 import OrderConfirmationPage from './pages/OrderConfirmationPage.jsx'
+import WalletTopUpResultPage from './pages/WalletTopUpResultPage.jsx'
 import { getStoredAuth } from './services/authApi.js'
 import ToastViewport from './components/layout/ToastViewport.jsx'
 import ChatWidget from './components/layout/ChatWidget.jsx'
@@ -57,6 +59,7 @@ function App() {
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/checkout/payment" element={<CheckoutPage />} />
         <Route path="/checkout/complete/:rentalId" element={<OrderConfirmationPage />} />
+        <Route path="/wallet/top-up-result" element={<WalletTopUpResultPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />
@@ -66,6 +69,7 @@ function App() {
         <Route path="/admin/orders" element={<AdminOnly><AdminOrdersPage /></AdminOnly>} />
         <Route path="/admin/disputes" element={<AdminOnly><AdminMarketplacePage /></AdminOnly>} />
         <Route path="/admin/verifications" element={<AdminOnly><AdminVerificationsPage /></AdminOnly>} />
+        <Route path="/admin/reviews" element={<AdminOnly><AdminReviewsPage /></AdminOnly>} />
         <Route path="/categories" element={<CategoryPage categorySlug="all" />} />
         <Route path="/categories/:categorySlug" element={<CategoryRoute />} />
         <Route path="/owner/*" element={<OwnerPage />} />

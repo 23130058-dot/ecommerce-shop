@@ -44,14 +44,23 @@ export const confirmOwnerBooking = (rentalId) => request(`/bookings/${encodeURIC
 export const handoverOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/handover`, { method: 'PATCH' })
 export const completeOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/complete`, { method: 'PATCH' })
 export const cancelOwnerBooking = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/cancel`, { method: 'PATCH' })
+export const confirmOwnerCancellationReturn = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/cancel-return`, { method: 'PATCH' })
+export const confirmOwnerBookingReturn = (rentalId) => request(`/bookings/${encodeURIComponent(rentalId)}/return`, { method: 'PATCH' })
 export const getOwnerSchedules = (options) => request('/schedule', options)
+export const getOwnerScheduleOverview = ({ from, to, signal } = {}) => {
+  const query = new URLSearchParams({ from, to })
+  return request(`/schedule/overview?${query.toString()}`, { signal })
+}
 export const saveOwnerSchedule = (productId, body) => request(`/schedule/${encodeURIComponent(productId)}`, { method: 'PUT', body })
 export const getOwnerReturns = (options) => request('/returns', options)
 export const confirmOwnerReturn = (rentalItemId) => request(`/returns/${encodeURIComponent(rentalItemId)}/confirm`, { method: 'PATCH' })
 export const reportOwnerDamage = (rentalItemId, body) => request(`/returns/${encodeURIComponent(rentalItemId)}/damage`, { method: 'POST', body })
 export const getOwnerWallet = (options) => request('/wallet', options)
 export const getOwnerTransactions = (options) => request('/transactions', options)
-export const requestOwnerWithdrawal = (amount) => request('/withdrawals', { method: 'POST', body: { amount: Number(amount) } })
+export const requestOwnerWithdrawal = (withdrawal) => request('/withdrawals', {
+  method: 'POST',
+  body: { ...withdrawal, amount: Number(withdrawal.amount) },
+})
 export const getOwnerReviews = (options) => request('/reviews', options)
 export const submitOwnerReview = (body) => request('/reviews', { method: 'POST', body })
 export const getOwnerChats = (options) => request('/chats', options)

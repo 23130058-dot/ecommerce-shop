@@ -120,6 +120,7 @@ function CatalogProductCard({ product }) {
 }
 
 export default function CategoryPage({ categorySlug }) {
+  const location = useLocation()
   const currentCategory = categories.find((category) => category.slug === categorySlug)
   const slug = currentCategory?.slug || 'all'
   const content = pageContent[slug] || {
@@ -127,7 +128,7 @@ export default function CategoryPage({ categorySlug }) {
     intro: 'Khám phá thiết bị quay chụp được tuyển chọn cho dự án tiếp theo của bạn.',
     types: [],
   }
-  const [searchValue, setSearchValue] = useState('')
+  const [searchValue, setSearchValue] = useState(() => new URLSearchParams(location.search).get('search') || '')
   const [activeSort, setActiveSort] = useState('popular')
   const [selectedCategories, setSelectedCategories] = useState(slug === 'all' ? [] : [slug])
   const [selectedBrands, setSelectedBrands] = useState([])
@@ -136,6 +137,10 @@ export default function CategoryPage({ categorySlug }) {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [retryToken, setRetryToken] = useState(0)
+
+  useEffect(() => {
+    setSearchValue(new URLSearchParams(location.search).get('search') || '')
+  }, [location.search])
 
   useEffect(() => {
     const controller = new AbortController()

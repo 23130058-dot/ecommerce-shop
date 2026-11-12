@@ -37,7 +37,7 @@ export default function EquipmentEdit() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
-    const isPendingApproval = ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL']
+    const isPendingApproval = ['PENDING', 'PENDING_APPROVAL', 'WAITING_APPROVAL', 'REJECTED']
         .includes(String(product?.status || '').toUpperCase())
 
     useEffect(() => {
